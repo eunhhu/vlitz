@@ -1,0 +1,11 @@
+[package]
+name = "vlitz"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = {version = "4.5.38", features = ["derive"]} # For command line argument parsing
+frida = {version = "0.16.7", features = ["auto-download"]}
+reqwest = "0.12.15"
+rustyline = "15.0.0"
+tokio = "1.45.0"
