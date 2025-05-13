@@ -1,7 +1,7 @@
 mod core;
 
-use core::executeCli;
+use core::execute_cli;
 
 fn main() {
-    executeCli()
+    execute_cli()
 }

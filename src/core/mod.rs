@@ -1,30 +1,60 @@
 mod cli;
 mod manager;
 mod ps;
+mod actions;
 
 use std::process::exit;
 use clap::Parser;
 use manager::Manager;
+use actions::{get_device};
+use cli::{Cli, Commands};
+use serde::de;
 
-pub fn executeCli() {
-    let cliparser = cli::Cli::parse();
+pub fn execute_cli() {
+    let cliparser = Cli::parse();
     let _manager = Manager::new();
     match &cliparser.command {
-        Some(cli::Commands::Ps(args)) => {
-            ps::ps(&_manager, args);
+        Commands::Attach(args) => {
+            let device = get_device(&_manager, &args.connection);
+            if let Some(_device) = device {
+                // let session = actions::get_session(&_device, &args.target);
+                // if let Some(session) = session {
+                //     println!("Attached to process: {:?}", session);
+                // } else {
+                //     println!("Failed to attach to process");
+                // }
+            } else {
+                println!("No device found");
+            }
         }
-        Some(cli::Commands::Kill(args)) => {
-            println!("Kill command executed with args: {:?}", args);
+        Commands::Ps(args) => {
+            println!("Ps command executed");
+            let device = get_device(&_manager, &args.connection);
+            if let Some(device) = device {
+                println!("Device: {:?}", device.get_name());
+                ps::ps(&device, args);
+            } else {
+                println!("No device found");
+            }
         }
-        Some(cli::Commands::Devices) => {
-            println!("Devices command executed");
+        Commands::Kill(args) => {
+            let device = get_device(&_manager, &args.connection);
+            if let Some(mut device) = device {
+                if let Some(pid) = args.process.attach_pid {
+                    device.kill(pid).unwrap();
+                    println!("Killed process with PID: {}", pid);
+                } else {
+                    println!("No PID provided");
+                }
+            } else {
+                println!("No device found");
+            }
         }
-        Some(cli::Commands::External(args)) => {
-            println!("Attach command provided with args: {:?}", args);
-            println!("{:?}", cliparser)
-        }
-        None => {
-            println!("Attach command provided {:?}", cliparser);
+        Commands::Devices => {
+            let devices = _manager.device_manager.enumerate_all_devices();
+            for device in devices {
+                println!("[{}] {} | {}", device.get_type(), device.get_id(), device.get_name());
+            }
         }
     }
     exit(0);

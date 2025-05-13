@@ -1,16 +1,10 @@
 use clap::{Parser, Subcommand, Args};
 
-#[derive(Parser, Debug)]
-#[clap(name = "vlitz", about = "A strong dynamic debugger CLI tool based on frida", long_about = None)]
+#[derive(Parser)]
+#[clap(name = "vlitz", version, about = "A strong dynamic debugger CLI tool based on frida", long_about = None)]
 pub struct Cli {
-    #[clap(flatten)]
-    pub connection: ConnectionArgs,
-
-    #[clap(flatten)]
-    pub attach: AttachArgs,
-
     #[clap(subcommand)]
-    pub command: Option<Commands>,
+    pub command: Commands,
 }
 
 #[derive(Args, Debug)]
@@ -35,36 +29,53 @@ pub struct ConnectionArgs {
 
 #[derive(Args, Debug)]
 #[clap(group(
-    clap::ArgGroup::new("process")
-        .args(&["attach_identifier", "attach_pid"])
+    clap::ArgGroup::new("process_method")
+        .args(&["attach_name", "attach_pid", "target"])
         .multiple(false)
+        .required(true)
 ))]
 pub struct ProcessArgs {
-    #[clap(short = 'N', long, value_name = "NAME", help = "attach to IDENTIFIER")]
-    pub attach_identifier: Option<String>,
+    #[clap(short = 'n', long, value_name = "NAME", help = "attach to NAME")]
+    pub attach_name: Option<String>,
     
     #[clap(short = 'p', long, value_name = "PID", help = "attach to PID")]
     pub attach_pid: Option<u32>,
+
+    #[clap(index = 1, help = "target NAME")]
+    pub target: Option<String>,
 }
 
 #[derive(Args, Debug)]
 #[clap(group(
-    clap::ArgGroup::new("attach")
-    .args(&["file", "attach_name", "attach_identifier", "attach_pid"])
+    clap::ArgGroup::new("target_method")
+    .args(&["file", "attach_identifier", "attach_name", "attach_pid", "target"])
     .multiple(false)
+    .required(true)
 ))]
-pub struct AttachArgs {
+pub struct TargetArgs {
     #[clap(short, long, value_name = "TARGET", help = "spawn FILE")]
     pub file: Option<String>,
     
+    #[clap(short = 'N', long, value_name = "IDENTIFIER", help = "attach to IDENTIFIER")]
+    pub attach_identifier: Option<String>,
+
     #[clap(short = 'n', long, value_name = "NAME", help = "attach to NAME")]
     pub attach_name: Option<String>,
     
-    #[clap(short = 'N', long, value_name = "NAME", help = "attach to IDENTIFIER")]
-    pub attach_identifier: Option<String>,
-    
     #[clap(short = 'p', long, value_name = "PID", help = "attach to PID")]
     pub attach_pid: Option<u32>,
+
+    #[clap(index = 1, help = "target NAME")]
+    pub target: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct AttachArgs {
+    #[clap(flatten)]
+    pub connection: ConnectionArgs,
+
+    #[clap(flatten)]
+    pub target: TargetArgs,
 }
 
 #[derive(Args, Debug)]
@@ -82,16 +93,16 @@ pub struct PsArgs {
 #[derive(Args, Debug)]
 pub struct KillArgs {
     #[clap(flatten)]
-    pub process: ProcessArgs,
+    pub connection: ConnectionArgs,
 
-    pub target: String,
+    #[clap(flatten)]
+    pub process: ProcessArgs,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum Commands{
+    Attach (AttachArgs),
     Ps (PsArgs),
     Kill (KillArgs),
     Devices,
-    #[clap(external_subcommand)]
-    External(Vec<String>),
 }
