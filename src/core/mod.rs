@@ -6,33 +6,38 @@ mod actions;
 use std::process::exit;
 use clap::Parser;
 use manager::Manager;
-use actions::{get_device};
+use actions::{get_device, get_session};
 use cli::{Cli, Commands};
-use serde::de;
 
 pub fn execute_cli() {
     let cliparser = Cli::parse();
     let _manager = Manager::new();
     match &cliparser.command {
         Commands::Attach(args) => {
-            let device = get_device(&_manager, &args.connection);
-            if let Some(_device) = device {
-                // let session = actions::get_session(&_device, &args.target);
-                // if let Some(session) = session {
-                //     println!("Attached to process: {:?}", session);
-                // } else {
-                //     println!("Failed to attach to process");
-                // }
-            } else {
-                println!("No device found");
+            let mut device = match get_device(&_manager, &args.connection) {
+                Some(device) => device,
+                None => {
+                    println!("No device found");
+                    return;
+                }
+            };
+            let session_result = get_session(&mut device, &args.target);
+            match session_result {
+                Some(session) => {
+                    println!("Attached");
+                }
+                None => {
+                    println!("Failed to attach to process");
+                }
             }
         }
         Commands::Ps(args) => {
-            println!("Ps command executed");
             let device = get_device(&_manager, &args.connection);
             if let Some(device) = device {
                 println!("Device: {:?}", device.get_name());
-                ps::ps(&device, args);
+                for process in ps::ps(&device, args) {
+                    println!("[{}] {}", process.get_pid(), process.get_name());
+                }
             } else {
                 println!("No device found");
             }

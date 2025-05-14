@@ -1,9 +1,7 @@
-use frida::{Device};
+use frida::{Device, Process};
 use super::cli::PsArgs;
 
-pub fn ps(device: &Device, args: &PsArgs) {
+pub fn ps<'a>(device: &'a Device<'a>, args: &'a PsArgs) -> Vec<Process<'a>> {
     let processes = device.enumerate_processes();
-    for process in processes {
-        println!("{} (PID: {})", process.get_name(), process.get_pid());
-    }
+    return processes;
 }
