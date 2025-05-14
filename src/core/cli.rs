@@ -88,6 +88,9 @@ pub struct PsArgs {
 
     #[clap(short = 'i', long = "installed", help = "include all installed applications")]
     pub installed: bool,
+
+    #[clap(index = 1, help = "filter NAME")]
+    pub filter: Option<String>,
 }
 
 #[derive(Args, Debug)]

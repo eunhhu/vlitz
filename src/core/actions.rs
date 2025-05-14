@@ -21,30 +21,46 @@ pub fn get_device<'a>(manager: &'a Manager, args: &ConnectionArgs) -> Option<Dev
     None
 }
 
-pub fn get_session<'a>(device: &'a mut Device<'a>, args: &TargetArgs) -> Option<Session<'a>> {
+pub fn get_session<'a>(device: &'a mut Device, args: &TargetArgs) -> Option<(Session<'a>, u32)> {
     if let Some(file) = &args.file {
         let so = SpawnOptions::new();
-        let pid = device.spawn(file, &so).ok();
-        if let Some(pid) = pid {
-            let session = device.attach(pid).ok();
-            if let Some(session) = session {
-                return Some(session);
+        if let Ok(pid) = device.spawn(file, &so) {
+            if let Ok(session) = device.attach(pid) {
+                return Some((session, pid));
             }
         }
     } else if let Some(attach_identifier) = &args.attach_identifier {
-        return device.enumerate_processes().iter().find(|p| {
+        if let Some(pid) = device.enumerate_processes().iter().find(|p| {
             p.get_name() == attach_identifier
-        }).and_then(|p| device.attach(p.get_pid()).ok());
+        }).map(|p| p.get_pid()) {
+            if let Ok(session) = device.attach(pid) {
+                return Some((session, pid));
+            }
+        }
     } else if let Some(attach_name) = &args.attach_name {
-        return device.enumerate_processes().iter().find(|p| {
+        if let Some(pid) = device.enumerate_processes().iter().find(|p| {
             p.get_name() == attach_name
-        }).and_then(|p| device.attach(p.get_pid()).ok());
+        }).map(|p| p.get_pid()) {
+            if let Ok(session) = device.attach(pid) {
+                return Some((session, pid));
+            }
+        }
     } else if let Some(attach_pid) = args.attach_pid {
-        return device.attach(attach_pid).ok();
+        if let Some(pid) = device.enumerate_processes().iter().find(|p| {
+            p.get_pid() == attach_pid
+        }).map(|p| p.get_pid()) {
+            if let Ok(session) = device.attach(pid) {
+                return Some((session, pid));
+            }
+        }
     } else if let Some(target) = &args.target {
-        return device.enumerate_processes().iter().find(|p| {
+        if let Some(pid) = device.enumerate_processes().iter().find(|p| {
             p.get_name() == target
-        }).and_then(|p| device.attach(p.get_pid()).ok());
+        }).map(|p| p.get_pid()) {
+            if let Ok(session) = device.attach(pid) {
+                return Some((session, pid));
+            }
+        }
     }
     None
 }
