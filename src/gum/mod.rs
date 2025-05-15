@@ -1,7 +1,9 @@
 mod handler;
+mod session;
 
 use handler::Handler;
-use frida::{ScriptOption, Device, ScriptHandler};
+use frida::{ScriptOption, Device};
+use session::session_manager;
 use std::{fs::File, io::Read};
 use std::path::PathBuf;
 use crate::core::cli::TargetArgs;
@@ -57,5 +59,13 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
     }
 
     script.load().unwrap();
-    println!("Script loaded");
+
+    if args.file.is_some() {
+        device.resume(pid).unwrap();
+    }
+
+    session_manager(&script);
+
+    script.unload().unwrap();
+    session.detach().unwrap();
 }

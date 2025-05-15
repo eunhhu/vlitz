@@ -10,3 +10,7 @@ pub fn truncate(s: &str, max_chars: usize) -> String {
         format!("{}{}", truncated_graphemes, ellipsis)
     }
 }
+
+pub fn fill(length: usize) -> String {
+    String::from("█").repeat(length)
+}

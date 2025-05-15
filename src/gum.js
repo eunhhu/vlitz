@@ -31,7 +31,3 @@ rpc.exports = {
         }
     }
 }
-
-setTimeout(() => {
-    console.log("GUM.js loaded");
-}, 100);
