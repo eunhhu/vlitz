@@ -19,8 +19,10 @@ pub fn execute_cli() {
             let device_opt = get_device(&_manager, &args.connection);
             if let Some(mut device) = device_opt {
                 attach(&mut device, &args.target);
+                exit(0);
             } else {
                 println!("No device found");
+                exit(0);
             }
         }
         Commands::Ps(args) => {
@@ -30,8 +32,10 @@ pub fn execute_cli() {
                 for process in ps::ps(&device, args) {
                     println!("[{}] {}", process.get_pid(), process.get_name());
                 }
+                exit(0);
             } else {
                 println!("No device found");
+                exit(0);
             }
         }
         Commands::Kill(args) => {
@@ -44,9 +48,11 @@ pub fn execute_cli() {
                     for pid in killed_pids {
                         println!("Killed process with PID: {}", pid);
                     }
+                    exit(0);
                 }
             } else {
                 println!("No device found");
+                exit(0);
             }
         }
         Commands::Devices => {
@@ -54,6 +60,7 @@ pub fn execute_cli() {
             for device in devices {
                 println!("[{}] {} | {}", device.get_type(), device.get_id(), device.get_name());
             }
+            exit(0);
         }
     }
     exit(0);

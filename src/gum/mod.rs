@@ -68,4 +68,5 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
 
     script.unload().unwrap();
     session.detach().unwrap();
+    println!("Exiting...");
 }
