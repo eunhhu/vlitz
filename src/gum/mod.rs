@@ -1,6 +1,9 @@
 mod handler;
 mod session;
 
+pub mod vzdata;
+pub mod field;
+
 use crate::core::cli::TargetArgs;
 use frida::{Device, ScriptOption};
 use handler::Handler;

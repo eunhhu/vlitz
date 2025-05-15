@@ -1,7 +1,7 @@
 use frida::{Script};
-use std::{io::{stdin, stdout, Write}, process::exit};
+use std::{io::{stdin, stdout, Write}};
 use crossterm::{
-    ExecutableCommand, QueueableCommand,
+    ExecutableCommand,
     terminal, cursor, style::{Stylize}
 };
 
@@ -13,7 +13,8 @@ pub fn session_manager(script: &Script) {
     let title = format!("vlitz v{}", version);
     stdout.execute(terminal::SetTitle(title)).unwrap();
     loop {
-        stdout.write(b"vlitz>").unwrap();
+        let write_str = format!("{} > ", "vlitz".green());
+        stdout.write(write_str.as_bytes()).unwrap();
         stdout.flush().unwrap();
         let mut input = String::new();
         stdin().read_line(&mut input).expect("Failed to read line");
@@ -21,8 +22,14 @@ pub fn session_manager(script: &Script) {
         if input.is_empty() {
             continue;
         }
-        if input == "exit" {
-            break;
+        match input {
+            "exit" | "quit" | "q" => {
+                break;
+            }
+            "help" => {
+            }
+            _ => {
+            }
         }
     }
 }

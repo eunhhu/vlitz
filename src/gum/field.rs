@@ -1,3 +1,3 @@
-struct Field {
+pub struct Field {
     
 }
