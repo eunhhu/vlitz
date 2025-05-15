@@ -30,7 +30,7 @@ pub fn execute_cli() {
         Commands::Ps(args) => {
             let device = get_device(&_manager, &args.connection);
             if let Some(device) = device {
-                println!("{}{:?}", "Device - ".green(), device.get_name().green());
+                println!("{} {}", "Device:".green(), device.get_name().replace("\"", "").green());
                 println!(
                     "{} {}",
                     lengthed("PID", 5).bright_blue().bold(),
@@ -68,12 +68,18 @@ pub fn execute_cli() {
         }
         Commands::Devices => {
             let devices = _manager.device_manager.enumerate_all_devices();
+            println!(
+                "{} | {} {}",
+                lengthed("Type", 6).blue().bold(),
+                lengthed("ID", 8).white().bold(),
+                "Device Name".grey().bold()
+            );
             for device in devices {
                 println!(
-                    "[{}] {} | {}",
-                    device.get_type(),
-                    device.get_id(),
-                    device.get_name()
+                    "{} | {} {}",
+                    lengthed(&device.get_type().to_string(), 6).blue(),
+                    lengthed(device.get_id(), 8).white(),
+                    device.get_name().grey()
                 );
             }
             exit(0);
