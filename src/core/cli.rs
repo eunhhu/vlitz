@@ -83,11 +83,11 @@ pub struct PsArgs {
     #[clap(flatten)]
     pub connection: ConnectionArgs,
 
-    #[clap(short = 'a', long = "applications", help = "list only applications")]
-    pub applications: bool,
+    // #[clap(short = 'a', long = "applications", help = "list only applications")]
+    // pub applications: bool,
 
-    #[clap(short = 'i', long = "installed", help = "include all installed applications")]
-    pub installed: bool,
+    // #[clap(short = 'i', long = "installed", help = "include all installed applications")]
+    // pub installed: bool,
 
     #[clap(index = 1, help = "filter NAME")]
     pub filter: Option<String>,

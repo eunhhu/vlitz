@@ -2,7 +2,7 @@ use frida::{Script};
 use std::{io::{stdin, stdout, Write}, process::exit};
 use crossterm::{
     ExecutableCommand, QueueableCommand,
-    terminal, cursor, style::{self, Stylize}
+    terminal, cursor, style::{Stylize}
 };
 
 pub fn session_manager(script: &Script) {

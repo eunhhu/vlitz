@@ -1,5 +1,3 @@
-console.log("GUM.js loaded");
-
 rpc.exports = {
     memory: {
         reader: {

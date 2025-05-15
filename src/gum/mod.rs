@@ -53,7 +53,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
         println!("Session detached");
         return;
     }
-    let script_path = PathBuf::from("src/gum.js");
+    let script_path = PathBuf::from("src/agent.js");
     let mut script_file = File::open(script_path).expect("Failed to open script file");
     let mut script_content = String::new();
     script_file

@@ -4,13 +4,12 @@ mod kill;
 mod manager;
 mod ps;
 
-use crate::{gum::attach, util::lengthed};
+use crate::{gum::attach, util::{lengthed, highlight}};
 use actions::get_device;
 use clap::Parser;
 use cli::{Cli, Commands};
 use crossterm::style::Stylize;
 use manager::Manager;
-use owo_colors::OwoColorize;
 use std::process::exit;
 
 pub fn execute_cli() {
@@ -33,14 +32,19 @@ pub fn execute_cli() {
                 println!("{} {}", "Device:".green(), device.get_name().replace("\"", "").green());
                 println!(
                     "{} {}",
-                    lengthed("PID", 5).bright_blue().bold(),
-                    "Process Name".white().bold()
+                    lengthed("PID", 5).cyan().bold(),
+                    "Process Name".yellow().bold()
                 );
                 for process in ps::ps(&device, args) {
+                    let process_name = if args.filter.is_some() {
+                        highlight(process.get_name(), args.filter.as_ref().unwrap())
+                    } else {
+                        process.get_name().to_string()
+                    };
                     println!(
                         "{} {}",
                         lengthed(&process.get_pid().to_string(), 5).blue(),
-                        process.get_name().grey()
+                        process_name
                     );
                 }
                 exit(0);
@@ -69,14 +73,14 @@ pub fn execute_cli() {
         Commands::Devices => {
             let devices = _manager.device_manager.enumerate_all_devices();
             println!(
-                "{} | {} {}",
-                lengthed("Type", 6).blue().bold(),
-                lengthed("ID", 8).white().bold(),
-                "Device Name".grey().bold()
+                "{} {} {}",
+                lengthed("Type", 6).cyan().bold(),
+                lengthed("ID", 8).yellow().bold(),
+                "Device Name".yellow().bold()
             );
             for device in devices {
                 println!(
-                    "{} | {} {}",
+                    "{} {} {}",
                     lengthed(&device.get_type().to_string(), 6).blue(),
                     lengthed(device.get_id(), 8).white(),
                     device.get_name().grey()
