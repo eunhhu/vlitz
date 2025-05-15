@@ -1,3 +1,5 @@
+console.log("GUM.js loaded");
+
 rpc.exports = {
     memory: {
         reader: {
@@ -29,3 +31,7 @@ rpc.exports = {
         }
     }
 }
+
+setTimeout(() => {
+    console.log("GUM.js loaded");
+}, 100);

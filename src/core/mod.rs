@@ -1,4 +1,4 @@
-mod cli;
+pub mod cli;
 mod manager;
 mod ps;
 mod kill;
@@ -7,9 +7,9 @@ mod actions;
 use std::process::exit;
 use clap::Parser;
 use manager::Manager;
-use actions::{get_device, get_session};
+use actions::{get_device};
 use cli::{Cli, Commands};
-use crate::gum::start_gum_session;
+use crate::gum::attach;
 
 pub fn execute_cli() {
     let cliparser = Cli::parse();
@@ -18,13 +18,7 @@ pub fn execute_cli() {
         Commands::Attach(args) => {
             let device_opt = get_device(&_manager, &args.connection);
             if let Some(mut device) = device_opt {
-                let session_opt = get_session(&mut device, &args.target);
-                if let Some((session, pid)) = session_opt {
-                    // Pass a reference to device if cloning is not implemented
-                    start_gum_session(&device, &session, pid);
-                } else {
-                    println!("Failed to attach to process");
-                }
+                attach(&mut device, &args.target);
             } else {
                 println!("No device found");
             }
