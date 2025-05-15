@@ -1,15 +1,17 @@
+mod actions;
 pub mod cli;
+mod kill;
 mod manager;
 mod ps;
-mod kill;
-mod actions;
 
-use std::process::exit;
+use crate::{gum::attach, util::lengthed};
+use actions::get_device;
 use clap::Parser;
-use manager::Manager;
-use actions::{get_device};
 use cli::{Cli, Commands};
-use crate::gum::attach;
+use crossterm::style::Stylize;
+use manager::Manager;
+use owo_colors::OwoColorize;
+use std::process::exit;
 
 pub fn execute_cli() {
     let cliparser = Cli::parse();
@@ -21,20 +23,29 @@ pub fn execute_cli() {
                 attach(&mut device, &args.target);
                 exit(0);
             } else {
-                println!("No device found");
+                println!("{}", "No device found".red());
                 exit(0);
             }
         }
         Commands::Ps(args) => {
             let device = get_device(&_manager, &args.connection);
             if let Some(device) = device {
-                println!("Device: {:?}", device.get_name());
+                println!("{}{:?}", "Device - ".green(), device.get_name().green());
+                println!(
+                    "{} {}",
+                    lengthed("PID", 5).bright_blue().bold(),
+                    "Process Name".white().bold()
+                );
                 for process in ps::ps(&device, args) {
-                    println!("[{}] {}", process.get_pid(), process.get_name());
+                    println!(
+                        "{} {}",
+                        lengthed(&process.get_pid().to_string(), 5).blue(),
+                        process.get_name().grey()
+                    );
                 }
                 exit(0);
             } else {
-                println!("No device found");
+                println!("{}", "No device found".red());
                 exit(0);
             }
         }
@@ -51,14 +62,19 @@ pub fn execute_cli() {
                     exit(0);
                 }
             } else {
-                println!("No device found");
+                println!("{}", "No device found".red());
                 exit(0);
             }
         }
         Commands::Devices => {
             let devices = _manager.device_manager.enumerate_all_devices();
             for device in devices {
-                println!("[{}] {} | {}", device.get_type(), device.get_id(), device.get_name());
+                println!(
+                    "[{}] {} | {}",
+                    device.get_type(),
+                    device.get_id(),
+                    device.get_name()
+                );
             }
             exit(0);
         }
