@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.5.38", features = ["derive"] }
 crossterm = "0.29.0"
-frida = {version = "0.16.7", features = ["auto-download"]}
+ctrlc = "3.4.7"
+frida = {version = "0.16.10", features = ["auto-download"]}
+regex = "1.11.1"
 reqwest = "0.12.15"
 rustyline = "15.0.0"
 serde = "1.0.219"

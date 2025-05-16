@@ -1,3 +1,4 @@
+// src/gum/vzdata.rs
 use crossterm::style::Stylize;
 use std::fmt;
 
@@ -121,7 +122,7 @@ pub struct VzPointer {
 impl fmt::Display for VzPointer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {} {}",
-            format!("[{}]", self.base.data_type).green(), // VzDataType의 Display 사용
+            format!("[{}]", self.base.data_type).blue(), // VzDataType의 Display 사용
             format!("{:#x}", self.address),
             format!("({:#x})", self.size).grey(),
             format!("[{}]", self.value_type).yellow(), // VzValueType의 Display 사용
@@ -140,7 +141,7 @@ pub struct VzModule {
 impl fmt::Display for VzModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             format!("{} @ {:#x}", self.name, self.address),
             format!("({:#x})", self.size).grey()
         )
@@ -158,7 +159,7 @@ pub struct VzRange {
 impl fmt::Display for VzRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             format!("{:#x} - {:#x}", self.address, self.address + self.size as u64),
             format!("({:#x})", self.size).grey(),
             format!("[{}]", self.protection).yellow()
@@ -177,7 +178,7 @@ pub struct VzFunction {
 impl fmt::Display for VzFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             format!("{} @ {:#x}", self.name, self.address),
             format!("({})", self.module).yellow()
         )
@@ -195,7 +196,7 @@ pub struct VzVariable {
 impl fmt::Display for VzVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             format!("{} @ {:#x}", self.name, self.address),
             format!("({})", self.module).yellow()
         )
@@ -211,7 +212,7 @@ pub struct VzJavaClass {
 impl fmt::Display for VzJavaClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             self.name
         )
     }
@@ -228,7 +229,7 @@ pub struct VzJavaMethod {
 impl fmt::Display for VzJavaMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {} Args: {:?}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             self.name,
             format!("({})", self.class).yellow(),
             self.args
@@ -245,7 +246,7 @@ pub struct VzObjCClass {
 impl fmt::Display for VzObjCClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             self.name
         )
     }
@@ -261,7 +262,7 @@ pub struct VzObjCMethod {
 impl fmt::Display for VzObjCMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             self.name,
             format!("({})", self.class).yellow()
         )
@@ -278,7 +279,7 @@ pub struct VzThread {
 impl fmt::Display for VzThread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} Stack: {:?}", // stack을 디버그 형식으로 출력
-            format!("[{}]", self.base.data_type).green(),
+            format!("[{}]", self.base.data_type).blue(),
             self.id,
             self.stack
         )

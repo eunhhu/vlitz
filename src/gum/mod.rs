@@ -1,12 +1,12 @@
+// src/gum/mod.rs
 mod handler;
 mod session;
 
 pub mod vzdata;
-pub mod field;
-pub mod library;
+pub mod store;
 pub mod commander;
-
-use std::process::exit;
+pub mod navigator;
+pub mod selector;
 
 use crate::core::cli::TargetArgs;
 use crossterm::style::Stylize;
@@ -93,5 +93,5 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
 
     script.unload().unwrap();
     session.detach().unwrap();
-    println!("{}", "Session detached...".yellow().bold());
+    println!("{}", "Session detached.".yellow().bold());
 }

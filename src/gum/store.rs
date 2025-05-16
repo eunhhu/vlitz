@@ -1,14 +1,17 @@
+use crossterm::style::Stylize;
+
+// src/gum/store.rs
 use super::vzdata::VzData;
 
-pub struct Field {
+pub struct Store {
     pub data: Vec<VzData>,
     pub cursor: usize,
     pub page_size: usize,
 }
 
-impl Field {
+impl Store {
     pub fn new() -> Self {
-        Field {
+        Store {
             data: Vec::new(),
             cursor: 0,
             page_size: 50,
@@ -65,8 +68,40 @@ impl Field {
         &self.data[start_index..end_index]
     }
 
-    pub fn get_data_at(&self, index: usize) -> Option<&VzData> {
-        self.data.get(index)
+    pub fn get_data_at(&self, index: usize) -> Result<&VzData, String> {
+        if index < self.data.len() {
+            Ok(&self.data[index])
+        } else {
+            Err("Index out of bounds".to_string())
+        }
+    }
+
+    pub fn get_data_by_range(&self, start: usize, end: usize) -> Result<Vec<&VzData>, String> {
+        let start_index = start.min(self.data.len());
+        let end_index = end.min(self.data.len());
+        if start_index > end_index || end_index > self.data.len() {
+            return Err("Invalid range".to_string());
+        }
+        Ok(self.data[start_index..end_index].iter().collect())
+    }
+
+    pub fn get_multiple_data(&self, indices: &[usize]) -> Result<Vec<&VzData>, String> {
+        let mut result = Vec::new();
+        for &index in indices {
+            if index < self.data.len() {
+                result.push(&self.data[index]);
+            } else {
+                return Err(format!("Index {} out of bounds", index));
+            }
+        }
+        Ok(result)
+    }
+
+    pub fn get_all_data(&self) -> Result<Vec<&VzData>, String> {
+        if self.data.is_empty() {
+            return Err("No data available".to_string());
+        }
+        Ok(self.data.iter().collect())
     }
 
     pub fn get_cursor(&self) -> usize {

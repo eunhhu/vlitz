@@ -1,26 +1,34 @@
+// src/gum/commander.rs
 use crossterm::style::Stylize;
 use crate::{util::lengthed};
-use super::field::Field;
+use super::{
+    navigator::Navigator, selector::{parse_selection_type, SelectorType}, store::Store, vzdata::VzData
+};
 use frida::Script;
+use regex::Regex;
 
 pub struct Commander<'a> {
     script: &'a Script<'a>,
-    field: Field,
+    field: Store,
+    lib: Store,
+    pub navigator: Navigator,
 }
 
 impl<'a> Commander<'a> {
     pub fn new(script: &'a Script<'a>) -> Self {
-        let field = Field::new();
-        Commander { field, script }
+        Commander { 
+            script,
+            field: Store::new(),
+            lib: Store::new(),
+            navigator: Navigator::new(),
+        }
     }
 
     pub fn execute(&mut self, command: &str, args: Vec<&str>) {
         match command {
-            "ls" => self.ls(args),
             "help" => self.help(),
-            // 여기에 다른 명령어들을 추가합니다.
-            // "scan" => self.scan(args),
-            // "modules" => self.list_modules(args),
+            "ls" => self.ls(args),
+            // add more commands here
             _ => {
                 println!("{} {}",
                     "Unknown command:".red(),
@@ -31,8 +39,34 @@ impl<'a> Commander<'a> {
 
     fn help(&self) {
         println!("{}", "Available commands:".green());
-        println!("  {} - {}", lengthed("ls", 10).yellow(), "List the current data");
-        println!("  {} - {}", lengthed("help", 10).yellow(), "Show this help message");
+        println!("  {} - {}", lengthed("exit, quit, q", 24).yellow(), "Exit the session");
+        println!("  {} - {}", lengthed("help", 24).yellow(), "Show this help message");
+        println!("  {} - {}", lengthed("ls", 24).yellow(), "List the field data");
+    }
+
+    fn select(&mut self, s: &str) -> Result<Vec<&VzData>, String> {
+        let re = Regex::new(r"^([a-zA-Z0-9]+)?:?(.+)$").unwrap();
+        if let Some(caps) = re.captures(s) {
+            let store_name = &caps[1];
+            let selector = &caps[2];
+            let store = match store_name {
+                "field" => &self.field,
+                "lib" => &self.lib,
+                _ => return Err(format!("Unknown store: {}", store_name)),
+            };
+            let selector_type = parse_selection_type(selector);
+            match selector_type {
+                Ok(SelectorType::Indices(indices)) => {
+                    store.get_multiple_data(&indices)
+                }
+                Ok(SelectorType::All) => {
+                    store.get_all_data()
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            Err(format!("Invalid selection format: {}", s))
+        }
     }
 
     fn ls(&mut self, args: Vec<&str>) {
