@@ -56,12 +56,14 @@ pub fn execute_cli() {
         Commands::Kill(args) => {
             let device = get_device(&_manager, &args.connection);
             if let Some(mut device) = device {
-                let killed_pids = kill::kill(&mut device, &args.process);
-                if killed_pids.is_empty() {
+                let killed_processes = kill::kill(&mut device, &args.process);
+                if killed_processes.is_empty() {
                     println!("No processes killed");
                 } else {
-                    for pid in killed_pids {
-                        println!("Killed process with PID: {}", pid);
+                    for prc in killed_processes {
+                        println!("Killed process {} {}",
+                        prc.0.yellow(),
+                        format!("[{}]", prc.1.to_string()).blue());
                     }
                     exit(0);
                 }

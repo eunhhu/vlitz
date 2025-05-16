@@ -11,8 +11,10 @@ pub enum VzDataType {
     Thread,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzBase {
     pub data_type: VzDataType,
+    pub is_saved: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +36,20 @@ pub enum VzValueType {
     Void,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum VzData {
+    Pointer(VzPointer),
+    Module(VzModule),
+    Function(VzFunction),
+    Variable(VzVariable),
+    JavaClass(VzJavaClass),
+    JavaMethod(VzJavaMethod),
+    ObjCClass(VzObjCClass),
+    ObjCMethod(VzObjCMethod),
+    Thread(VzThread),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzPointer {
     pub base: VzBase,
     pub address: u64,
@@ -41,6 +57,7 @@ pub struct VzPointer {
     pub value_type: VzValueType,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzModule {
     pub base: VzBase,
     pub name: String,
@@ -48,6 +65,7 @@ pub struct VzModule {
     pub size: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzFunction {
     pub base: VzBase,
     pub name: String,
@@ -55,6 +73,7 @@ pub struct VzFunction {
     pub module: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzVariable {
     pub base: VzBase,
     pub name: String,
@@ -62,11 +81,13 @@ pub struct VzVariable {
     pub module: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzJavaClass {
     pub base: VzBase,
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzJavaMethod {
     pub base: VzBase,
     pub class: String,
@@ -74,17 +95,20 @@ pub struct VzJavaMethod {
     pub args: Vec<VzValueType>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzObjCClass {
     pub base: VzBase,
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzObjCMethod {
     pub base: VzBase,
     pub class: String,
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct VzThread {
     pub base: VzBase,
     pub id: u64,

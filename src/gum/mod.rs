@@ -3,13 +3,14 @@ mod session;
 
 pub mod vzdata;
 pub mod field;
+pub mod library;
+pub mod command;
 
 use crate::core::cli::TargetArgs;
+use crossterm::style::Stylize;
 use frida::{Device, ScriptOption};
 use handler::Handler;
 use session::session_manager;
-use std::path::PathBuf;
-use std::{fs::File, io::Read};
 
 pub fn attach(device: &mut Device, args: &TargetArgs) {
     let (session, pid) = if let Some(_pid) = args.attach_pid {
@@ -56,12 +57,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
         println!("Session detached");
         return;
     }
-    let script_path = PathBuf::from("src/agent.js");
-    let mut script_file = File::open(script_path).expect("Failed to open script file");
-    let mut script_content = String::new();
-    script_file
-        .read_to_string(&mut script_content)
-        .expect("Failed to read script file");
+    let script_content = include_str!("../agent.js").to_string();
     let mut script = session
         .create_script(&script_content, &mut ScriptOption::default())
         .unwrap();
@@ -81,5 +77,5 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
 
     script.unload().unwrap();
     session.detach().unwrap();
-    println!("Exiting...");
+    println!("{}", "Session detached...".yellow().bold());
 }

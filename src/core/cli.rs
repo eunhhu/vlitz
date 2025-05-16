@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, Args};
+use clap::{Parser, Subcommand, Args, ValueEnum};
 
 #[derive(Parser)]
 #[clap(name = "vlitz", version, about = "A strong dynamic debugger CLI tool based on frida", long_about = None)]
@@ -78,18 +78,27 @@ pub struct AttachArgs {
     pub target: TargetArgs,
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+pub enum Sort {
+    Name,
+    Pid,
+}
+
 #[derive(Args, Debug)]
 pub struct PsArgs {
     #[clap(flatten)]
     pub connection: ConnectionArgs,
 
-    // #[clap(short = 'a', long = "applications", help = "list only applications")]
+    // #[clap(short, long, help = "list only applications")]
     // pub applications: bool,
 
-    // #[clap(short = 'i', long = "installed", help = "include all installed applications")]
+    // #[clap(short, long, help = "include all installed applications")]
     // pub installed: bool,
 
-    #[clap(index = 1, help = "filter NAME")]
+    #[clap(short, long, help = "sort by NAME or PID")]
+    pub sort: Option<Sort>,
+
+    #[clap(index = 1, help = "target NAME")]
     pub filter: Option<String>,
 }
 
