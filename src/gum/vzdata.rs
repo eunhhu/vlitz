@@ -1,7 +1,11 @@
+use crossterm::style::Stylize;
+use std::fmt;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VzDataType {
     Pointer,
     Module,
+    Range,
     Function,
     Variable,
     JavaClass,
@@ -9,6 +13,23 @@ pub enum VzDataType {
     ObjCClass,
     ObjCMethod,
     Thread,
+}
+
+impl fmt::Display for VzDataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VzDataType::Pointer => write!(f, "Pointer"),
+            VzDataType::Module => write!(f, "Module"),
+            VzDataType::Range => write!(f, "Range"),
+            VzDataType::Function => write!(f, "Function"),
+            VzDataType::Variable => write!(f, "Variable"),
+            VzDataType::JavaClass => write!(f, "JavaClass"),
+            VzDataType::JavaMethod => write!(f, "JavaMethod"),
+            VzDataType::ObjCClass => write!(f, "ObjCClass"),
+            VzDataType::ObjCMethod => write!(f, "ObjCMethod"),
+            VzDataType::Thread => write!(f, "Thread"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,10 +57,33 @@ pub enum VzValueType {
     Void,
 }
 
+impl fmt::Display for VzValueType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VzValueType::Byte | VzValueType::Int8 => write!(f, "Byte"),
+            VzValueType::UByte | VzValueType::UInt8 => write!(f, "uByte"),
+            VzValueType::Short | VzValueType::Int16 => write!(f, "Short"),
+            VzValueType::UShort | VzValueType::UInt16 => write!(f, "uShort"),
+            VzValueType::Int | VzValueType::Int32 => write!(f, "Int"),
+            VzValueType::UInt | VzValueType::UInt32 => write!(f, "uInt"),
+            VzValueType::Long | VzValueType::Int64 => write!(f, "Long"),
+            VzValueType::ULong | VzValueType::UInt64 => write!(f, "uLong"),
+            VzValueType::Float | VzValueType::Float32 => write!(f, "Float"),
+            VzValueType::Double | VzValueType::Float64 => write!(f, "Double"),
+            VzValueType::Bool | VzValueType::Boolean => write!(f, "Bool"),
+            VzValueType::String | VzValueType::Utf8 => write!(f, "String"),
+            VzValueType::Array | VzValueType::Bytes => write!(f, "Bytes"),
+            VzValueType::Pointer => write!(f, "Pointer"),
+            VzValueType::Void => write!(f, "Void"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VzData {
     Pointer(VzPointer),
     Module(VzModule),
+    Range(VzRange),
     Function(VzFunction),
     Variable(VzVariable),
     JavaClass(VzJavaClass),
@@ -47,6 +91,23 @@ pub enum VzData {
     ObjCClass(VzObjCClass),
     ObjCMethod(VzObjCMethod),
     Thread(VzThread),
+}
+
+impl fmt::Display for VzData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VzData::Pointer(p) => write!(f, "{}", p),
+            VzData::Module(m) => write!(f, "{}", m),
+            VzData::Range(r) => write!(f, "{}", r),
+            VzData::Function(func) => write!(f, "{}", func),
+            VzData::Variable(v) => write!(f, "{}", v),
+            VzData::JavaClass(jc) => write!(f, "{}", jc),
+            VzData::JavaMethod(jm) => write!(f, "{}", jm),
+            VzData::ObjCClass(oc) => write!(f, "{}", oc),
+            VzData::ObjCMethod(om) => write!(f, "{}", om),
+            VzData::Thread(t) => write!(f, "{}", t),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,12 +118,52 @@ pub struct VzPointer {
     pub value_type: VzValueType,
 }
 
+impl fmt::Display for VzPointer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {} {}",
+            format!("[{}]", self.base.data_type).green(), // VzDataType의 Display 사용
+            format!("{:#x}", self.address),
+            format!("({:#x})", self.size).grey(),
+            format!("[{}]", self.value_type).yellow(), // VzValueType의 Display 사용
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzModule {
     pub base: VzBase,
     pub name: String,
     pub address: u64,
     pub size: usize,
+}
+
+impl fmt::Display for VzModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}",
+            format!("[{}]", self.base.data_type).green(),
+            format!("{} @ {:#x}", self.name, self.address),
+            format!("({:#x})", self.size).grey()
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzRange {
+    pub base: VzBase,
+    pub address: u64,
+    pub size: usize,
+    pub protection: String,
+}
+
+impl fmt::Display for VzRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {} {}",
+            format!("[{}]", self.base.data_type).green(),
+            format!("{:#x} - {:#x}", self.address, self.address + self.size as u64),
+            format!("({:#x})", self.size).grey(),
+            format!("[{}]", self.protection).yellow()
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +174,16 @@ pub struct VzFunction {
     pub module: String,
 }
 
+impl fmt::Display for VzFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}",
+            format!("[{}]", self.base.data_type).green(),
+            format!("{} @ {:#x}", self.name, self.address),
+            format!("({})", self.module).yellow()
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzVariable {
     pub base: VzBase,
@@ -81,10 +192,29 @@ pub struct VzVariable {
     pub module: String,
 }
 
+impl fmt::Display for VzVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}",
+            format!("[{}]", self.base.data_type).green(),
+            format!("{} @ {:#x}", self.name, self.address),
+            format!("({})", self.module).yellow()
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzJavaClass {
     pub base: VzBase,
     pub name: String,
+}
+
+impl fmt::Display for VzJavaClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}",
+            format!("[{}]", self.base.data_type).green(),
+            self.name
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,10 +225,30 @@ pub struct VzJavaMethod {
     pub args: Vec<VzValueType>,
 }
 
+impl fmt::Display for VzJavaMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {} Args: {:?}",
+            format!("[{}]", self.base.data_type).green(),
+            self.name,
+            format!("({})", self.class).yellow(),
+            self.args
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzObjCClass {
     pub base: VzBase,
     pub name: String,
+}
+
+impl fmt::Display for VzObjCClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}",
+            format!("[{}]", self.base.data_type).green(),
+            self.name
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,9 +258,29 @@ pub struct VzObjCMethod {
     pub name: String,
 }
 
+impl fmt::Display for VzObjCMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}",
+            format!("[{}]", self.base.data_type).green(),
+            self.name,
+            format!("({})", self.class).yellow()
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzThread {
     pub base: VzBase,
     pub id: u64,
     pub stack: Vec<VzPointer>,
+}
+
+impl fmt::Display for VzThread {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} Stack: {:?}", // stack을 디버그 형식으로 출력
+            format!("[{}]", self.base.data_type).green(),
+            self.id,
+            self.stack
+        )
+    }
 }

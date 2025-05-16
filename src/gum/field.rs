@@ -85,9 +85,8 @@ impl Field {
 
     pub fn next_page(&mut self, count: usize) {
         let current_page_num = self.cursor / self.page_size;
-        let total_pages = (self.data.len() as f64 / self.page_size as f64).ceil() as usize;
 
-        let mut new_cursor = (current_page_num + count) * self.page_size;
+        let new_cursor = (current_page_num + count) * self.page_size;
 
         if self.data.is_empty() || self.page_size == 0 {
             self.cursor = 0;

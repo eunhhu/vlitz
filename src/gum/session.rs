@@ -4,7 +4,7 @@ use crossterm::{
     ExecutableCommand,
     terminal, cursor, style::{Stylize}
 };
-use super::{command::parser, field::Field};
+use super::{commander::Commander};
 
 pub fn session_manager(script: &Script) {
     let mut stdout = stdout();
@@ -13,7 +13,7 @@ pub fn session_manager(script: &Script) {
     let version = env!("CARGO_PKG_VERSION");
     let title = format!("vlitz v{}", version);
     stdout.execute(terminal::SetTitle(title)).unwrap();
-    let mut field = Field::new();
+    let mut commander = Commander::new(&script);
     loop {
         let write_str = format!("{} > ", "vlitz".green());
         stdout.write(write_str.as_bytes()).unwrap();
@@ -30,10 +30,8 @@ pub fn session_manager(script: &Script) {
             "exit" | "quit" | "q" => {
                 break;
             }
-            "help" => {
-            }
             _ => {
-                parser(&mut field, command, args.collect());
+                commander.execute(command, args.collect());
             }
         }
     }

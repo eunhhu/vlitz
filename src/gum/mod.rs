@@ -4,7 +4,9 @@ mod session;
 pub mod vzdata;
 pub mod field;
 pub mod library;
-pub mod command;
+pub mod commander;
+
+use std::process::exit;
 
 use crate::core::cli::TargetArgs;
 use crossterm::style::Stylize;
@@ -24,7 +26,9 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
     } else if let Some(ref file) = args.file {
         let pid = device
             .spawn(file, &frida::SpawnOptions::new())
-            .expect("Failed to spawn process");
+            .unwrap_or_else(|e| {
+                panic!("{} {} ({})", "Failed to spawn process:".red(), file.to_string().yellow(), e);
+            });
         (device.attach(pid).unwrap(), pid)
     } else if let Some(ref name) = args.attach_name {
         let pid = device
@@ -32,7 +36,9 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .iter()
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
-            .expect("Process not found");
+            .unwrap_or_else(|| {
+                panic!("{} {}", "Process not found:".red(), name.to_string().yellow());
+            });
         (device.attach(pid).unwrap(), pid)
     } else if let Some(ref name) = args.attach_identifier {
         let pid = device
@@ -40,7 +46,9 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .iter()
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
-            .expect("Process not found");
+            .unwrap_or_else(|| {
+                panic!("{} {}", "Process not found:".red(), name.to_string().yellow());
+            });
         (device.attach(pid).unwrap(), pid)
     } else if let Some(ref name) = args.target {
         let pid = device
@@ -48,29 +56,37 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .iter()
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
-            .expect("Process not found");
+            .unwrap_or_else(|| {
+                panic!("{} {}", "Process not found:".red(), name.to_string().yellow());
+            });
         (device.attach(pid).unwrap(), pid)
     } else {
-        panic!("No target specified");
+        panic!("{}", "No target specified".red());
     };
     if session.is_detached() {
-        println!("Session detached");
+        println!("{}", "Session detached...".yellow().bold());
         return;
     }
     let script_content = include_str!("../agent.js").to_string();
     let mut script = session
         .create_script(&script_content, &mut ScriptOption::default())
-        .unwrap();
+        .unwrap_or_else(|e| {
+            panic!("{} {}", "Failed to create script:".red(), e);
+        });
 
     let handler = script.handle_message(Handler);
     if let Err(e) = handler {
-        panic!("Failed to set message handler: {}", e);
+        panic!("{} {}", "Failed to set message handler:".red(), e);
     }
 
-    script.load().unwrap();
+    script.load().unwrap_or_else(|e| {
+        panic!("{} {}", "Failed to load script:".red(), e);
+    });
 
     if args.file.is_some() {
-        device.resume(pid).unwrap();
+        device.resume(pid).unwrap_or_else(|e| {
+            panic!("{} {}", "Failed to resume process:".red(), e);
+        });
     }
 
     session_manager(&script);
