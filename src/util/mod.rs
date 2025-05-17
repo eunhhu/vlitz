@@ -1,27 +1,39 @@
 use crossterm::style::Stylize;
 use unicode_segmentation::UnicodeSegmentation;
 
-pub fn truncate(s: &str, max_chars: usize) -> String {
-    if s.graphemes(true).count() <= max_chars {
-        s.to_string()
-    } else {
-        let truncated_graphemes = s.graphemes(true).take(max_chars - 1).collect::<String>();
-        let ellipsis = "…";
-
-        format!("{}{}", truncated_graphemes, ellipsis)
-    }
-}
-
 pub fn lengthed(s: &str, size: usize) -> String {
-    let len = s.graphemes(true).count();
+    // Strip ANSI color codes for length calculation
+    let stripped = strip_ansi_escapes::strip(s);
+    let stripped_str = String::from_utf8_lossy(&stripped);
+    
+    let len = stripped_str.graphemes(true).count();
     if len == size {
         s.to_string()
     } else if len > size {
-        let truncated_graphemes = s.graphemes(true).take(size - 1).collect::<String>();
+        let mut result = String::new();
+        let mut current_len = 0;
         let ellipsis = "…";
-        format!("{}{}", truncated_graphemes, ellipsis)
+        
+        // Rebuild the string with color codes but proper length
+        for c in s.chars() {
+            if current_len >= size - 1 {
+                result.push_str(ellipsis);
+                break;
+            }
+            result.push(c);
+            if c == '\x1B' {
+                // Skip ANSI escape sequence
+                while let Some(next) = s.chars().nth(result.len()) {
+                    result.push(next);
+                    if next == 'm' { break; }
+                }
+            } else {
+                current_len += 1;
+            }
+        }
+        result
     } else {
-        format!("{:<size$}", s, size = size)
+        format!("{:<size$}", s, size = size + (s.len() - stripped_str.len()))
     }
 }
 

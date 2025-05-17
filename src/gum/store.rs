@@ -1,17 +1,37 @@
-use crossterm::style::Stylize;
-
 // src/gum/store.rs
+
+use crate::util::lengthed;
 use super::vzdata::VzData;
+use crossterm::style::Stylize;
+use std::{collections::BTreeSet, fmt};
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum SelectorType {
+    Indices(Vec<usize>),
+    All,
+}
+
+impl fmt::Display for SelectorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SelectorType::Indices(indices) => write!(f, "{}", indices.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ")),
+            SelectorType::All => write!(f, "all"),
+        }
+    }
+}
+
 
 pub struct Store {
+    pub name: String,
     pub data: Vec<VzData>,
     pub cursor: usize,
     pub page_size: usize,
 }
 
 impl Store {
-    pub fn new() -> Self {
+    pub fn new(name: String) -> Self {
         Store {
+            name,
             data: Vec::new(),
             cursor: 0,
             page_size: 50,
@@ -56,6 +76,13 @@ impl Store {
         }
     }
 
+    pub fn move_data(&mut self, from: usize, to: usize) {
+        if from < self.data.len() {
+            let data = self.data.remove(from);
+            self.data.insert(to, data);
+        }
+    }
+
     pub fn clear_data(&mut self) {
         self.data.clear();
         self.adjust_cursor();
@@ -66,6 +93,14 @@ impl Store {
         let end_index = (self.cursor + self.page_size).min(self.data.len());
 
         &self.data[start_index..end_index]
+    }
+
+    pub fn get_data_by_page(&self, page: usize) -> Result<Vec<&VzData>, String> {
+        let (_, total_pages) = self.get_page_info();
+        let page = page.min(total_pages);
+        let start_index = page * self.page_size;
+        let end_index = (page + 1) * self.page_size;
+        self.get_data_by_range(start_index, end_index)
     }
 
     pub fn get_data_at(&self, index: usize) -> Result<&VzData, String> {
@@ -150,11 +185,89 @@ impl Store {
     }
 
     pub fn get_page_info(&self) -> (usize, usize) {
-        if self.data.is_empty() || self.page_size == 0 {
+        if self.data.is_empty() {
+            return (1, 1);
+        }
+        if self.page_size == 0 {
             return (0, 0);
         }
         let current_page_num = (self.cursor / self.page_size) + 1;
         let total_pages = (self.data.len() as f64 / self.page_size as f64).ceil() as usize;
         (current_page_num, total_pages)
+    }
+
+    fn parse_selection_type(s: &str) -> Result<SelectorType, String> {
+        if s == "all" {
+            return Ok(SelectorType::All);
+        }
+        let mut indices = BTreeSet::new();
+        for s in s.split(',').map(|s| s.trim()) {
+            if s.is_empty() {
+                continue;
+            }
+            if let Ok(index) = s.parse::<usize>() {
+                indices.insert(index);
+            } else {
+                let ranges: Vec<_> = s.split('-').map(|s| s.trim()).collect();
+                if ranges.len() > 2 {
+                    return Err(format!("Invalid range: {}", s));
+                } else {
+                    let start = ranges.get(0).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
+                    let end = ranges.get(1).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
+                    if start > end {
+                        return Err(format!("Invalid range: {}", s));
+                    }
+                    for i in start..=end {
+                        indices.insert(i);
+                    }
+                }
+            }
+        }
+        Ok(SelectorType::Indices(indices.into_iter().collect()))
+    }
+
+    pub fn get_data_by_selection(&self, selector: &str) -> Result<Vec<&VzData>, String> {
+        if self.data.is_empty() {
+            return Err("Store is empty".to_string());
+        }
+        let selector_type = Store::parse_selection_type(selector);
+        match selector_type {
+            Ok(selector_type) => {
+                match selector_type {
+                    SelectorType::Indices(indices) => self.get_multiple_data(&indices),
+                    SelectorType::All => self.get_all_data(),
+                }
+            },
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn to_string(&self, page: Option<usize>) -> String {
+        let cursor = if self.data.len() > 0 {
+            self.get_cursor() + 1
+        } else {
+            0
+        };
+        let current_page = self.get_page_info().0;
+        let total_pages = self.get_page_info().1;
+        let header = format!("{} {}-{} [{}] ({}/{})",
+            self.name.clone().green(),
+            cursor,
+            self.get_cursor_end(),
+            self.data.len().to_string().yellow(),
+            current_page,
+            total_pages
+        );
+        let data = self.get_data_by_page(page.unwrap_or(current_page)).unwrap();
+        let max_idx_len = self.data.len().to_string().len();
+        let mut body = String::new();
+        for (i, item) in data.iter().enumerate() {
+            let global_idx = self.get_cursor() + i + 1;
+            body.push_str(&format!("\n[{}] {}",
+                lengthed(&global_idx.to_string(), max_idx_len).blue(),
+                item
+            ));
+        }
+        format!("{}{}", header, body)
     }
 }

@@ -1,11 +1,15 @@
 function filtered(arr, filter) {
-    
     return arr.filter(v => {
         
     })
 }
 
 rpc.exports = {
+    // debug
+    get_env: () => [
+        Java.available ? "Android" : ObjC.available ? "iOS" : "Native",
+        Process.arch
+    ],
     // reader
     reader_byte: a => ptr(a).readU8(),
     reader_short: a => ptr(a).readS16(),
@@ -31,13 +35,13 @@ rpc.exports = {
     writer_string: (a, v) => ptr(a).writeUtf8String(v),
     writer_bytes: (a, v) => ptr(a).writeByteArray(v),
     // list
-    list_modules: () => Process.enumerateModules().map(m => [m.name, m.base.toUInt32(), m.size]),
+    list_modules: (filter) => Process.enumerateModules().map(m => [m.name, m.base.toUInt32(), m.size]),
     list_ranges: (protect = 'r--') => Process.enumerateRanges(protect).map(m => m.base),
     list_ranges_by_module: (a, protect = 'r--') => {
         const md = Process.findModuleByAddress(ptr(a));
         if (!md) return [];
         return Process.enumerateRanges(protect)
-        .filter(m => m.base >= md.base && m.base < md.base.add(md.size))
+        .filter(m => m.base >= md.base && m.base.add(m.size) < md.base.add(md.size))
         .map(m => [m.base, m.size, m.protection]);
     },
     list_exports: (a, type, filter) => {
@@ -51,4 +55,7 @@ rpc.exports = {
     list_java_classes: (filter) => {
         return Java.enumerateLoadedClassesSync();
     },
+    list_java_methods: (c, filter) => {
+        return Java.enumerateMethodsSync(`${c}!*`);
+    }
 }

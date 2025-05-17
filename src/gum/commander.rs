@@ -1,101 +1,400 @@
 // src/gum/commander.rs
 use crossterm::style::Stylize;
-use crate::{util::lengthed};
+use crate::util::fill;
+
 use super::{
-    navigator::Navigator, selector::{parse_selection_type, SelectorType}, store::Store, vzdata::VzData
+    navigator::Navigator,
+    store::Store,
+    vzdata::VzData
 };
 use frida::Script;
 use regex::Regex;
+use std::fmt;
 
-pub struct Commander<'a> {
-    script: &'a Script<'a>,
+#[derive(Debug)]
+struct CommandArg {
+    name: String,
+    description: String,
+    required: bool,
+}
+
+impl CommandArg {
+    fn new(name: &str, description: &str, required: bool) -> Self {
+        Self {
+            name: name.to_string(),
+            description: description.to_string(),
+            required,
+        }
+    }
+
+    fn required(name: &str, description: &str) -> Self {
+        Self::new(name, description, true)
+    }
+
+    fn optional(name: &str, description: &str) -> Self {
+        Self::new(name, description, false)
+    }
+}
+
+impl fmt::Display for CommandArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.required {
+            write!(f, "<{}>", self.name)
+        } else {
+            write!(f, "[{}]", self.name)
+        }
+    }
+}
+
+type CommandHandler = fn(&mut Commander, &[&str]) -> bool;
+
+struct SubCommand {
+    name: String,
+    aliases: Vec<String>,
+    description: String,
+    args: Vec<CommandArg>,
+    execute: CommandHandler,
+}
+
+impl SubCommand {
+    fn new(
+        name: &str,
+        description: &str,
+        args: Vec<CommandArg>,
+        execute: CommandHandler,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            aliases: Vec::new(),
+            description: description.to_string(),
+            args,
+            execute,
+        }
+    }
+
+    fn alias(mut self, alias: &str) -> Self {
+        self.aliases.push(alias.to_string());
+        self
+    }
+}
+
+struct Command {
+    command: String,
+    description: String,
+    aliases: Vec<String>,
+    args: Vec<CommandArg>,
+    subcommands: Vec<SubCommand>,
+    default_execute: Option<CommandHandler>,
+}
+
+impl Command {
+    fn new(
+        command: &str,
+        description: &str,
+        aliases: Vec<&str>,
+        args: Vec<CommandArg>,
+        subcommands: Vec<SubCommand>,
+        default_execute: Option<CommandHandler>,
+    ) -> Self {
+        Self {
+            command: command.to_string(),
+            description: description.to_string(),
+            aliases: aliases.into_iter().map(String::from).collect(),
+            args,
+            subcommands,
+            default_execute,
+        }
+    }
+}
+
+pub struct Commander<'a, 'b> {
+    script: &'a mut Script<'b>,
+    pub env: String,
     field: Store,
     lib: Store,
     pub navigator: Navigator,
+    commands: Vec<Command>,
 }
 
-impl<'a> Commander<'a> {
-    pub fn new(script: &'a Script<'a>) -> Self {
-        Commander { 
+impl<'a, 'b> Commander<'a, 'b> {
+    pub fn new(script: &'a mut Script<'b>) -> Self {
+        let env_value = script.exports.call("get_env", None)
+            .expect("Failed to call get_env")
+            .expect("Failed to get env value");
+        let env_arr = env_value.as_array().unwrap();
+        Commander {
             script,
-            field: Store::new(),
-            lib: Store::new(),
+            env: format!(
+                "{} {}",
+                env_arr[0].as_str().unwrap_or(""),
+                env_arr[1].as_str().unwrap_or("")
+            ),
+            field: Store::new("Field".to_string()),
+            lib: Store::new("Lib".to_string()),
             navigator: Navigator::new(),
+            commands: vec![
+                Command::new(
+                    "help",
+                    "Show this help message",
+                    vec!["h"],
+                    vec![CommandArg::optional("command", "Command to show help for")],
+                    vec![],
+                    Some(|c, a| Commander::help(c, a)),
+                ),
+                Command::new(
+                    "exit",
+                    "Exit the session",
+                    vec!["quit", "q"],
+                    vec![],
+                    vec![],
+                    Some(|c, a| Commander::exit(c, a)),
+                ),
+                Command::new(
+                    "field",
+                    "Field manipulation commands. Default list command",
+                    vec!["f"],
+                    vec![
+                        CommandArg::optional("page", "Page number")
+                    ],
+                    vec![
+                        SubCommand::new(
+                            "list",
+                            "List fields with optional page number",
+                            vec![CommandArg::optional("page", "Page number")],
+                            |c, a| Commander::field_list(c, a),
+                        ).alias("ls").alias("l"),
+                        SubCommand::new(
+                            "next",
+                            "Go to next page of fields",
+                            vec![],
+                            |c, a| Commander::field_next(c, a),
+                        ).alias("n"),
+                        SubCommand::new(
+                            "prev",
+                            "Go to previous page of fields",
+                            vec![],
+                            |c, a| Commander::field_prev(c, a),
+                        ).alias("p"),
+                    ],
+                    Some(|c, a| Commander::field_list(c, a)),
+                )
+            ],
         }
     }
 
-    pub fn execute(&mut self, command: &str, args: Vec<&str>) {
-        match command {
-            "help" => self.help(),
-            "ls" => self.ls(args),
-            // add more commands here
-            _ => {
-                println!("{} {}",
-                    "Unknown command:".red(),
-                    command);
+    pub fn execute_command(&mut self, command: &str, args: &[&str]) -> bool {
+        if let Some(cmd) = self.commands.iter().find(|c| c.command == command || c.aliases.contains(&command.to_string())) {
+            if !cmd.subcommands.is_empty() {
+                if let Some((subcommand, sub_args)) = args.split_first() {
+                    if let Some(sub_cmd) = cmd.subcommands.iter().find(|s| 
+                        s.name == *subcommand || s.aliases.contains(&subcommand.to_string())
+                    ) {
+                        // Check required arguments for the subcommand
+                        let required_args = sub_cmd.args.iter().filter(|a| a.required).count();
+                        if sub_args.len() < required_args {
+                            println!("{} Expected at least {} arguments, got {}",
+                                "Error:".red(),
+                                required_args,
+                                sub_args.len()
+                            );
+                            return true;
+                        }
+                        return (sub_cmd.execute)(self, sub_args);
+                    }
+                }
+                // If we reached here, no valid subcommand was found
+                if let Some(default_exec) = &cmd.default_execute {
+                    return default_exec(self, args);
+                }
+                println!("{} {}", "No subcommand specified.".red(), format!("Use 'help {}' for more information.", command).dark_grey());
+                return true;
+            } else if let Some(exec) = &cmd.default_execute {
+                return exec(self, args);
             }
+        } else {
+            println!("{} {}", "Unknown command:".red(), command);
+        }
+        true
+    }
+
+    fn help(&mut self, args: &[&str]) -> bool {
+        if !args.is_empty() {
+            let command = self.commands.iter().find(|c| c.command == args[0] || c.aliases.contains(&args[0].to_string()));
+            if let Some(cmd) = command {
+                // Usage
+                let args_usage = cmd.args.iter()
+                .map(|arg| arg.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+                println!("\n{} {}{}",
+                    "Usage:".green(),
+                    cmd.command.clone().yellow(),
+                    if args_usage.is_empty() { "".to_string() } else { format!(" {}", args_usage) }
+                );
+                // Description
+                println!("{} {}", "Description:".green(), cmd.description);
+                // Arguments
+                if !cmd.args.is_empty() {
+                    println!("\n{}", "Arguments:".green());
+                    for arg in &cmd.args {
+                        let required = if arg.required { " (required)" } else { "" };
+                        println!("  {:<15} {}{}",
+                            format!("{}:", arg.name),
+                            arg.description,
+                            required.yellow()
+                        );
+                    }
+                }
+
+                // Aliases
+                if !cmd.aliases.is_empty() {
+                    println!("\n{} {}",
+                        "Aliases:".green(),
+                        cmd.aliases.join(", ").dark_grey()
+                    );
+                }
+                
+                // Subcommands
+                if !cmd.subcommands.is_empty() {
+                    println!("\n{}", "Subcommands:".green());
+                    for sub in &cmd.subcommands {
+                        let aliases = if !sub.aliases.is_empty() {
+                            format!(" ({})", sub.aliases.join(", ").dark_grey())
+                        } else {
+                            String::new()
+                        };
+                        let sub_and_args = format!("{} {}", sub.name,
+                            sub.args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>().join(" ")
+                        );
+                        if sub_and_args.len() > 15 {
+                            println!("  {}",
+                                sub_and_args
+                            );
+                            println!("  {} {}{}",
+                                " ".repeat(15),
+                                sub.description,
+                                aliases
+                            );
+                        } else {
+                            println!("  {:<15} {}{}",
+                                sub_and_args,
+                                sub.description,
+                                aliases
+                            );
+                        }
+                    }
+                }
+                
+                return true;
+            }
+            
+            println!("{} {}", "Unknown command:".red(), args[0]);
+            true
+        } else {
+            // Show all commands
+            println!("\n{}", "Available commands:".green());
+            println!("  {:<24} {}", "Command", "Description");
+            println!("  {:-<24} {:-<40}", "", "");
+            
+            for cmd in &self.commands {
+                let aliases = if !cmd.aliases.is_empty() {
+                    format!(" ({})", cmd.aliases.join(", ").dark_grey())
+                } else {
+                    String::new()
+                };
+
+                let args_usage = cmd.args.iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                
+                let cmd_with_args: String = if args_usage.is_empty() {
+                    cmd.command.clone().yellow().to_string()
+                } else {
+                    format!("{} {}", cmd.command.clone().yellow(), args_usage)
+                };
+                let mut cmd_len = cmd.command.len() + args_usage.len();
+                if !args_usage.is_empty() {
+                    cmd_len += 1;
+                }
+                
+                if cmd_len < 24 {
+                    println!("  {}{} {}{}",
+                        cmd_with_args,
+                        " ".repeat(24 - cmd_len),
+                        cmd.description,
+                        aliases
+                    );
+                } else {
+                    println!("  {}\n  {}{}",
+                        cmd_with_args,
+                        " ".repeat(24),
+                        format!("{}{}", cmd.description, aliases)
+                    );
+                }
+            }
+            
+            println!("\nType '{} [command]' for more information about a command.", "help".yellow());
+            true
         }
     }
 
-    fn help(&self) {
-        println!("{}", "Available commands:".green());
-        println!("  {} - {}", lengthed("exit, quit, q", 24).yellow(), "Exit the session");
-        println!("  {} - {}", lengthed("help", 24).yellow(), "Show this help message");
-        println!("  {} - {}", lengthed("ls", 24).yellow(), "List the field data");
+    fn exit(&mut self, _args: &[&str]) -> bool {
+        println!("{}", "Exiting...".yellow());
+        false
     }
 
-    fn select(&mut self, s: &str) -> Result<Vec<&VzData>, String> {
-        let re = Regex::new(r"^([a-zA-Z0-9]+)?:?(.+)$").unwrap();
+    fn selector(&mut self, s: &str) -> Result<Vec<&VzData>, String> {
+        let re = Regex::new(r"^(?:(\w+):)?(.+)$").expect("Regex compilation failed");
         if let Some(caps) = re.captures(s) {
-            let store_name = &caps[1];
-            let selector = &caps[2];
+            let store_name = caps.get(1).map_or("lib", |m| m.as_str());
+            let selector = caps.get(2).ok_or("No selector provided")?;
+            let selector = selector.as_str();
             let store = match store_name {
-                "field" => &self.field,
                 "lib" => &self.lib,
+                "field" => &self.field,
                 _ => return Err(format!("Unknown store: {}", store_name)),
             };
-            let selector_type = parse_selection_type(selector);
-            match selector_type {
-                Ok(SelectorType::Indices(indices)) => {
-                    store.get_multiple_data(&indices)
-                }
-                Ok(SelectorType::All) => {
-                    store.get_all_data()
-                }
-                Err(e) => Err(e),
+            let data = store.get_data_by_selection(selector);
+            match data {
+                Ok(data) => Ok(data),
+                Err(e) => {
+                    if store.name == "lib" {
+                        let store = &self.field;
+                        let data = store.get_data_by_selection(selector);
+                        match data {
+                            Ok(data) => Ok(data),
+                            Err(e) => Err(format!("Failed to get data: {}", e)),
+                        }
+                    } else {
+                        Err(format!("Failed to get data: {}", e))
+                    }
+                },
             }
         } else {
             Err(format!("Invalid selection format: {}", s))
         }
     }
 
-    fn ls(&mut self, args: Vec<&str>) {
-        if args.is_empty() {
-            let cursor = if self.field.data.len() > 0 {
-                self.field.get_cursor() + 1
-            } else {
-                0
-            };
-            let current_page = self.field.get_page_info().0;
-            let total_pages = self.field.get_page_info().1;
-            println!("{}", format!("Field {}-{} [{}] ({}/{})",
-                cursor,
-                self.field.get_cursor_end(),
-                self.field.data.len(),
-                current_page,
-                total_pages
-            ).green());
-
-            let data = self.field.get_current_data();
-            let max_idx_len = self.field.data.len().to_string().len();
-
-            for (i, item) in data.iter().enumerate() {
-                let global_idx = self.field.get_cursor() + i + 1;
-                println!("[{}] {}",
-                    lengthed(&global_idx.to_string(), max_idx_len).blue(),
-                    item
-                );
-            }
+    fn field_list(&mut self, args: &[&str]) -> bool {
+        let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+        if let Some(page_num) = page.checked_sub(1) {
+            println!("{}", self.field.to_string(Some(page_num as usize)));
+        } else {
+            println!("{}", self.field.to_string(None));
         }
+        true
+    }
+
+    fn field_next(&mut self, _args: &[&str]) -> bool {
+        // Implement next page logic here
+        println!("Next page");
+        true
+    }
+
+    fn field_prev(&mut self, _args: &[&str]) -> bool {
+        // Implement previous page logic here
+        println!("Previous page");
+        true
     }
 }
