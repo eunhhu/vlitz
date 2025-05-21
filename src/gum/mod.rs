@@ -6,6 +6,7 @@ pub mod vzdata;
 pub mod store;
 pub mod commander;
 pub mod navigator;
+pub mod list;
 
 use std::process::exit;
 

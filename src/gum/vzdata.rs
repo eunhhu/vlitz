@@ -285,3 +285,7 @@ impl fmt::Display for VzThread {
         )
     }
 }
+
+pub fn string_to_u64(s: &str) -> u64 {
+    u64::from_str_radix(s, 16).unwrap()
+}

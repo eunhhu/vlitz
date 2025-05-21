@@ -3,13 +3,11 @@ use crossterm::style::Stylize;
 use crate::util::fill;
 
 use super::{
-    navigator::Navigator,
-    store::Store,
-    vzdata::VzData
+    list::list_modules, navigator::Navigator, store::Store, vzdata::VzData
 };
 use frida::Script;
 use regex::Regex;
-use std::fmt;
+use std::{fmt, vec};
 
 #[derive(Debug)]
 struct CommandArg {
@@ -151,7 +149,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                 ),
                 Command::new(
                     "field",
-                    "Field manipulation commands. Default list command",
+                    "Field manipulation commands.",
                     vec!["f"],
                     vec![
                         CommandArg::optional("page", "Page number")
@@ -166,17 +164,57 @@ impl<'a, 'b> Commander<'a, 'b> {
                         SubCommand::new(
                             "next",
                             "Go to next page of fields",
-                            vec![],
+                            vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_next(c, a),
                         ).alias("n"),
                         SubCommand::new(
                             "prev",
                             "Go to previous page of fields",
-                            vec![],
+                            vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_prev(c, a),
                         ).alias("p"),
                     ],
                     Some(|c, a| Commander::field_list(c, a)),
+                ),
+                Command::new(
+                    "lib",
+                    "Library manipulation commands.",
+                    vec!["l"],
+                    vec![CommandArg::optional("page", "Page number")],
+                    vec![
+                        SubCommand::new(
+                            "list",
+                            "List libraries with optional page number",
+                            vec![CommandArg::optional("page", "Page number")],
+                            |c, a| Commander::lib_list(c, a),
+                        ).alias("ls").alias("l"),
+                        SubCommand::new(
+                            "next",
+                            "Go to next page of libraries",
+                            vec![CommandArg::optional("page", "Page number")],
+                            |c, a| Commander::lib_next(c, a),
+                        ).alias("n"),
+                        SubCommand::new(
+                            "prev",
+                            "Go to previous page of libraries",
+                            vec![CommandArg::optional("page", "Page number")],
+                            |c, a| Commander::lib_prev(c, a),
+                        ).alias("p"),
+                    ],
+                    Some(|c, a| Commander::lib_list(c, a)),
+                ),
+                Command::new(
+                    "list",
+                    "List all data",
+                    vec![],
+                    vec![],
+                    vec![SubCommand::new(
+                        "modules",
+                        "List all modules",
+                        vec![],
+                        |c, a| Commander::list_modules(c, a),
+                    )],
+                    None,
                 )
             ],
         }
@@ -292,8 +330,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             true
         } else {
             // Show all commands
-            println!("\n{}", "Available commands:".green());
-            println!("  {:<24} {}", "Command", "Description");
+            println!("  {}{} {}", "Command".green().bold(), " ".repeat(24 - "Command".len()), "Description".green().bold());
             println!("  {:-<24} {:-<40}", "", "");
             
             for cmd in &self.commands {
@@ -373,6 +410,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                     }
                 }
             }
+
+            println!("\nType \'{} {}\' for more information", "help".yellow().bold(), "[command]".bold());
             
             true
         }
@@ -441,6 +480,46 @@ impl<'a, 'b> Commander<'a, 'b> {
             let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
             self.field.prev_page(page.try_into().unwrap());
         }
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn lib_list(&mut self, args: &[&str]) -> bool {
+        let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+        if let Some(page_num) = page.checked_sub(1) {
+            println!("{}", self.lib.to_string(Some(page_num as usize)));
+        } else {
+            println!("{}", self.lib.to_string(None));
+        }
+        true
+    }
+
+    fn lib_next(&mut self, args: &[&str]) -> bool {
+        let (current_page, total_pages) = self.lib.get_page_info();
+        if current_page != total_pages {
+            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
+            self.lib.next_page(page.try_into().unwrap());
+        }
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_prev(&mut self, args: &[&str]) -> bool {
+        let (current_page, _) = self.lib.get_page_info();
+        if current_page != 1 {
+            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
+            self.lib.prev_page(page.try_into().unwrap());
+        }
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn list_modules(&mut self, args: &[&str]) -> bool {
+        let modules = list_modules(&mut self.script, None)
+            .into_iter()
+            .map(|m| VzData::Module(m))
+            .collect::<Vec<_>>();
+        self.field.add_datas(modules);
         println!("{}", self.field.to_string(None));
         true
     }
