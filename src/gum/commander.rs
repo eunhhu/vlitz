@@ -332,9 +332,48 @@ impl<'a, 'b> Commander<'a, 'b> {
                         format!("{}{}", cmd.description, aliases)
                     );
                 }
+
+                if !cmd.subcommands.is_empty() {
+                    for subcmd in &cmd.subcommands {
+                        let aliases = if !subcmd.aliases.is_empty(){
+                            format!(" ({})", subcmd.aliases.join(", ").dark_grey())
+                        } else {
+                            String::new()
+                        };
+                        let args_usage = subcmd.args.iter()
+                            .map(|arg| arg.to_string())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let subcmd_with_args = if args_usage.is_empty() {
+                            subcmd.name.clone().yellow().to_string()
+                        } else {
+                            format!("{} {}", subcmd.name.clone().yellow(), args_usage)
+                        };
+                        let mut subcmd_len = subcmd.name.len() + args_usage.len();
+                        if !args_usage.is_empty() {
+                            subcmd_len += 1;
+                        }
+                        if subcmd_len < 24 {
+                            println!("  {}{}{} {}{}",
+                                " ".repeat(cmd.command.len() + 1),
+                                subcmd_with_args,
+                                " ".repeat(24 - subcmd_len - cmd.command.len() - 1),
+                                subcmd.description,
+                                aliases
+                            );
+                        } else {
+                            println!("  {}{}\n    {}{}{}",
+                                " ".repeat(cmd.command.len() + 1),
+                                subcmd_with_args,
+                                " ".repeat(24 - cmd.command.len() - 1),
+                                subcmd.description,
+                                aliases
+                            );
+                        }
+                    }
+                }
             }
             
-            println!("\nType '{} [command]' for more information about a command.", "help".yellow());
             true
         }
     }
@@ -386,15 +425,23 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_next(&mut self, _args: &[&str]) -> bool {
-        // Implement next page logic here
-        println!("Next page");
+    fn field_next(&mut self, args: &[&str]) -> bool {
+        let (current_page, total_pages) = self.field.get_page_info();
+        if current_page != total_pages {
+            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
+            self.field.next_page(page.try_into().unwrap());
+        }
+        println!("{}", self.field.to_string(None));
         true
     }
 
-    fn field_prev(&mut self, _args: &[&str]) -> bool {
-        // Implement previous page logic here
-        println!("Previous page");
+    fn field_prev(&mut self, args: &[&str]) -> bool {
+        let (current_page, _) = self.field.get_page_info();
+        if current_page != 1 {
+            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
+            self.field.prev_page(page.try_into().unwrap());
+        }
+        println!("{}", self.field.to_string(None));
         true
     }
 }
