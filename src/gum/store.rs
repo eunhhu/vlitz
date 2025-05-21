@@ -51,13 +51,7 @@ impl Store {
             return;
         }
 
-        let last_page_start_index = total_data_len.saturating_sub(self.page_size);
-
-        if self.cursor > last_page_start_index {
-            self.cursor = last_page_start_index;
-        }
-
-        self.cursor = (self.cursor / self.page_size) * self.page_size;
+        self.cursor = (self.cursor / self.page_size).saturating_mul(self.page_size);
     }
 
     pub fn add_data(&mut self, data: VzData) {
@@ -97,9 +91,9 @@ impl Store {
 
     pub fn get_data_by_page(&self, page: usize) -> Result<Vec<&VzData>, String> {
         let (_, total_pages) = self.get_page_info();
-        let page = page.min(total_pages);
-        let start_index = page * self.page_size;
-        let end_index = (page + 1) * self.page_size;
+        let page_idx = page.max(1).min(total_pages) - 1;
+        let start_index = page_idx.saturating_mul(self.page_size);
+        let end_index = (page_idx + 1).min(total_pages).saturating_mul(self.page_size);
         self.get_data_by_range(start_index, end_index)
     }
 
@@ -144,7 +138,7 @@ impl Store {
     }
 
     pub fn get_cursor_end(&self) -> usize {
-        let end_index = (self.cursor + self.page_size).min(self.data.len());
+        let end_index = (self.cursor + self.page_size - 1).min(self.data.len() - 1);
         end_index
     }
 
@@ -154,34 +148,33 @@ impl Store {
     }
 
     pub fn next_page(&mut self, count: usize) {
-        let current_page_num = self.cursor / self.page_size;
+        let (current_page_num, max_page_num) = self.get_page_info();
 
-        let new_cursor = (current_page_num + count) * self.page_size;
-
-        if self.data.is_empty() || self.page_size == 0 {
-            self.cursor = 0;
+        if current_page_num >= max_page_num {
             return;
         }
-
-        let last_page_start_index = self.data.len().saturating_sub(self.page_size);
-        
-        if new_cursor > last_page_start_index {
-            self.cursor = last_page_start_index;
-        } else {
-            self.cursor = new_cursor;
-        }
+        let new_page = current_page_num.saturating_add(count) - 1;
+        println!("new_page_idx: {} {}", new_page, max_page_num);
+        let new_cursor = new_page
+            .min(max_page_num - 1)
+            .max(0)
+            .saturating_mul(self.page_size);
+        println!("new_cursor: {}", new_cursor);
+        self.set_cursor(new_cursor);
     }
 
     pub fn prev_page(&mut self, count: usize) {
-        let current_page_num = self.cursor / self.page_size;
-
-        if self.data.is_empty() || self.page_size == 0 {
-            self.cursor = 0;
+        let (current_page_num, max_page_num) = self.get_page_info();
+        if current_page_num <= 1 {
             return;
         }
-
-        let new_cursor = current_page_num.saturating_sub(count) * self.page_size;
-        self.cursor = new_cursor;
+        let new_page = current_page_num.saturating_sub(count) - 1;
+        let new_cursor = new_page
+            .min(max_page_num - 1)
+            .max(0)
+            .saturating_mul(self.page_size);
+        println!("new_cursor: {}", new_cursor);
+        self.set_cursor(new_cursor);
     }
 
     pub fn get_page_info(&self) -> (usize, usize) {
@@ -191,7 +184,7 @@ impl Store {
         if self.page_size == 0 {
             return (0, 0);
         }
-        let current_page_num = (self.cursor / self.page_size) + 1;
+        let current_page_num = (self.cursor as f64 / self.page_size as f64).ceil() as usize + 1;
         let total_pages = (self.data.len() as f64 / self.page_size as f64).ceil() as usize;
         (current_page_num, total_pages)
     }
@@ -244,12 +237,11 @@ impl Store {
 
     pub fn to_string(&self, page: Option<usize>) -> String {
         let cursor = if self.data.len() > 0 {
-            self.get_cursor() + 1
+            self.get_cursor()
         } else {
             0
         };
-        let current_page = self.get_page_info().0;
-        let total_pages = self.get_page_info().1;
+        let (current_page, total_pages) = self.get_page_info();
         let header = format!("{} {}-{} [{}] ({}/{})",
             self.name.clone().green(),
             cursor,
@@ -262,12 +254,17 @@ impl Store {
         let max_idx_len = self.data.len().to_string().len();
         let mut body = String::new();
         for (i, item) in data.iter().enumerate() {
-            let global_idx = self.get_cursor() + i + 1;
+            let global_idx = self.get_cursor() + i;
             body.push_str(&format!("\n[{}] {}",
                 lengthed(&global_idx.to_string(), max_idx_len).blue(),
                 item
             ));
         }
         format!("{}{}", header, body)
+    }
+
+    pub fn sort(&mut self, sort_by: &str) {
+        self.data.sort_by_key(|item| item);
+        self.adjust_cursor();
     }
 }

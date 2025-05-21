@@ -36,7 +36,7 @@ rpc.exports = {
     writer_bytes: (a, v) => ptr(a).writeByteArray(v),
     // list
     list_modules: (filter) => Process.enumerateModules().map(m => [m.name, m.base.toString(), m.size]),
-    list_ranges: (protect = 'r--') => Process.enumerateRanges(protect).map(m => m.base),
+    list_ranges: (protect = '---') => Process.enumerateRanges(protect).map(m => [m.base.toString(), m.size, m.protection]),
     list_ranges_by_module: (a, protect = 'r--') => {
         const md = Process.findModuleByAddress(ptr(a));
         if (!md) return [];

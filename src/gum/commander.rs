@@ -132,6 +132,21 @@ impl<'a, 'b> Commander<'a, 'b> {
             navigator: Navigator::new(),
             commands: vec![
                 Command::new(
+                    "debug",
+                    "Debug functions",
+                    vec!["d"],
+                    vec![],
+                    vec![
+                        SubCommand::new(
+                            "exports",
+                            "List exports",
+                            vec![],
+                            |c, a| Commander::debug_exports(c, a),
+                        ).alias("e")
+                    ],
+                    None,
+                ),
+                Command::new(
                     "help",
                     "Show this help message",
                     vec!["h"],
@@ -206,14 +221,16 @@ impl<'a, 'b> Commander<'a, 'b> {
                 Command::new(
                     "list",
                     "List all data",
+                    vec!["ls"],
                     vec![],
-                    vec![],
-                    vec![SubCommand::new(
-                        "modules",
-                        "List all modules",
-                        vec![],
-                        |c, a| Commander::list_modules(c, a),
-                    )],
+                    vec![
+                        SubCommand::new(
+                            "modules",
+                            "List all modules",
+                            vec![CommandArg::optional("filter", "Filter modules")],
+                            |c, a| Commander::list_modules(c, a),
+                        ).alias("mods").alias("md")
+                    ],
                     None,
                 )
             ],
@@ -516,11 +533,18 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     fn list_modules(&mut self, args: &[&str]) -> bool {
         let modules = list_modules(&mut self.script, None)
-            .into_iter()
-            .map(|m| VzData::Module(m))
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|m| VzData::Module(m))
             .collect::<Vec<_>>();
         self.field.add_datas(modules);
         println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn debug_exports(&mut self, args: &[&str]) -> bool {
+        let exports = self.script.list_exports().unwrap();
+        println!("{:?}", &exports);
         true
     }
 }

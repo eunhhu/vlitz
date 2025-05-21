@@ -122,10 +122,10 @@ pub struct VzPointer {
 impl fmt::Display for VzPointer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {} {}",
-            format!("[{}]", self.base.data_type).blue(), // VzDataType의 Display 사용
-            format!("{:#x}", self.address),
-            format!("({:#x})", self.size).grey(),
-            format!("[{}]", self.value_type).yellow(), // VzValueType의 Display 사용
+            format!("[{}]", self.base.data_type).blue(),
+            format!("{:#x}", self.address).yellow(),
+            format!("({:#x})", self.size).dark_grey(),
+            format!("[{}]", self.value_type).yellow(),
         )
     }
 }
@@ -142,8 +142,8 @@ impl fmt::Display for VzModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {:#x}", self.name, self.address),
-            format!("({:#x})", self.size).grey()
+            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
+            format!("({:#x})", self.size).dark_grey()
         )
     }
 }
@@ -161,7 +161,7 @@ impl fmt::Display for VzRange {
         write!(f, "{} {} {} {}",
             format!("[{}]", self.base.data_type).blue(),
             format!("{:#x} - {:#x}", self.address, self.address + self.size as u64),
-            format!("({:#x})", self.size).grey(),
+            format!("({:#x})", self.size).dark_grey(),
             format!("[{}]", self.protection).yellow()
         )
     }
@@ -179,7 +179,7 @@ impl fmt::Display for VzFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {:#x}", self.name, self.address),
+            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
             format!("({})", self.module).yellow()
         )
     }
@@ -197,7 +197,7 @@ impl fmt::Display for VzVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {:#x}", self.name, self.address),
+            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
             format!("({})", self.module).yellow()
         )
     }
@@ -287,5 +287,6 @@ impl fmt::Display for VzThread {
 }
 
 pub fn string_to_u64(s: &str) -> u64 {
+    let s = s.trim_start_matches("0x");
     u64::from_str_radix(s, 16).unwrap()
 }
