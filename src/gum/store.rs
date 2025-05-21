@@ -263,8 +263,8 @@ impl Store {
         format!("{}{}", header, body)
     }
 
-    pub fn sort(&mut self, sort_by: &str) {
-        self.data.sort_by_key(|item| item);
-        self.adjust_cursor();
-    }
+    // pub fn sort(&mut self, sort_by: &str) {
+    //     self.data.sort_by_key(|item| item);
+    //     self.adjust_cursor();
+    // }
 }
