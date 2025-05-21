@@ -67,4 +67,22 @@ impl Navigator {
             data: None,
         }
     }
+    pub fn select(&mut self, data: &VzData) {
+        self.data = Some(data.clone());
+    }
+    pub fn deselect(&mut self) {
+        self.data = None;
+    }
+    pub fn get_data(&self) -> Option<&VzData> {
+        self.data.as_ref()
+    }
+    pub fn add(&mut self, offset: u64) {
+        // 만약 address가 있는 VzData라면, 선택된 데이터를 Pointer로 바꾸고 offset만큼 더한다.
+        // 그렇지 않다면, 아무것도 하지 않는다.
+        if let Some(data) = self.data.as_mut() {
+            if let VzData::Pointer(p) = data {
+                p.address += offset;
+            }
+        }
+    }
 }

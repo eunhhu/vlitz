@@ -188,6 +188,12 @@ impl<'a, 'b> Commander<'a, 'b> {
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_prev(c, a),
                         ).alias("p"),
+                        SubCommand::new(
+                            "sort",
+                            "Sort fields by name",
+                            vec![CommandArg::optional("type", "Sort type [addr]")],
+                            |c, a| Commander::field_sort(c, a),
+                        ).alias("s"),
                     ],
                     Some(|c, a| Commander::field_list(c, a)),
                 ),
@@ -215,6 +221,12 @@ impl<'a, 'b> Commander<'a, 'b> {
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::lib_prev(c, a),
                         ).alias("p"),
+                        SubCommand::new(
+                            "sort",
+                            "Sort libraries by name",
+                            vec![CommandArg::optional("type", "Sort type [addr]")],
+                            |c, a| Commander::lib_sort(c, a),
+                        ).alias("s"),
                     ],
                     Some(|c, a| Commander::lib_list(c, a)),
                 ),
@@ -501,6 +513,14 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
+    fn field_sort(&mut self, args: &[&str]) -> bool {
+        if let Some(sort_by) = args.get(0) {
+            self.field.sort(Some(sort_by));
+        }
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
     fn lib_list(&mut self, args: &[&str]) -> bool {
         let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
         if let Some(page_num) = page.checked_sub(1) {
@@ -526,6 +546,14 @@ impl<'a, 'b> Commander<'a, 'b> {
         if current_page != 1 {
             let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
             self.lib.prev_page(page.try_into().unwrap());
+        }
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_sort(&mut self, args: &[&str]) -> bool {
+        if let Some(sort_by) = args.get(0) {
+            self.lib.sort(Some(sort_by));
         }
         println!("{}", self.lib.to_string(None));
         true

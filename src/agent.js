@@ -1,7 +1,56 @@
 function filtered(arr, filter) {
-    return arr.filter(v => {
+    if (!filter || !Array.isArray(filter) || filter.length === 0) {
+        return [...arr];
+    }
+
+    const operators = {
+        '=': (a, b) => a == b,
+        '!=': (a, b) => a != b,
+        '<': (a, b) => a < b,
+        '>': (a, b) => a > b,
+        '<=': (a, b) => a <= b,
+        '>=': (a, b) => a >= b,
+        '::': (a, b) => String(a).includes(b),
+        '!::': (a, b) => !String(a).includes(b),
+    };
+
+    const evaluate = (item, condition) => {
+        if (!Array.isArray(condition) || condition.length < 3) {
+            return true;
+        }
+
+        const [key, op, value] = condition;
+        const itemValue = item[key];
+        const operator = operators[op];
+
+        if (!operator) {
+            console.warn(`Unknown operator: ${op}`);
+            return true;
+        }
+
+        return operator(itemValue, value);
+    };
+
+    let result = [...arr];
+    let currentOp = 'and';
+
+    for (let i = 0; i < filter.length; i++) {
+        const item = filter[i];
         
-    })
+        if (item === 'and' || item === 'or') {
+            currentOp = item;
+            continue;
+        }
+
+        if (Array.isArray(item) && item.length >= 3) {
+            result = result.filter(v => {
+                const matches = evaluate(v, item);
+                return currentOp === 'and' ? matches : true;
+            });
+        }
+    }
+
+    return result;
 }
 
 rpc.exports = {
@@ -35,27 +84,27 @@ rpc.exports = {
     writer_string: (a, v) => ptr(a).writeUtf8String(v),
     writer_bytes: (a, v) => ptr(a).writeByteArray(v),
     // list
-    list_modules: (filter) => Process.enumerateModules().map(m => [m.name, m.base.toString(), m.size]),
+    list_modules: (filter) => filtered(Process.enumerateModules().map(m => [m.name, m.base.toString(), m.size]), filter),
     list_ranges: (protect = '---') => Process.enumerateRanges(protect).map(m => [m.base.toString(), m.size, m.protection]),
-    list_ranges_by_module: (a, protect = 'r--') => {
+    list_ranges_by_module: (a, protect = '---') => {
         const md = Process.findModuleByAddress(ptr(a));
         if (!md) return [];
-        return Process.enumerateRanges(protect)
+        return filtered(Process.enumerateRanges(protect)
         .filter(m => m.base >= md.base && m.base.add(m.size) < md.base.add(md.size))
-        .map(m => [m.base, m.size, m.protection]);
+        .map(m => [m.base.toString(), m.size, m.protection]), filter);
     },
     list_exports: (a, type, filter) => {
         const md = Process.findModuleByAddress(ptr(a));
         if (!md) return [];
         const exps = md.enumerateExports().map(e => [e.name, e.address.toString(), e.type, md.name]);
         if (type) {
-            return exps.filter(e => e[2] === type);
-        } else return exps;
+            return filtered(exps.filter(e => e[2] === type), filter);
+        } else return filtered(exps, filter);
     },
     list_java_classes: (filter) => {
-        return Java.enumerateLoadedClassesSync();
+        return filtered(Java.enumerateLoadedClassesSync(), filter);
     },
     list_java_methods: (c, filter) => {
-        return Java.enumerateMethodsSync(`${c}!*`);
+        return filtered(Java.enumerateMethodsSync(`${c}!*`), filter);
     }
 }

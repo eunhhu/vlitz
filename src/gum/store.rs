@@ -3,7 +3,8 @@
 use crate::util::lengthed;
 use super::vzdata::VzData;
 use crossterm::style::Stylize;
-use std::{collections::BTreeSet, fmt};
+use reqwest::header::IterMut;
+use std::{any::Any, collections::BTreeSet, fmt};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SelectorType {
@@ -263,8 +264,39 @@ impl Store {
         format!("{}{}", header, body)
     }
 
-    // pub fn sort(&mut self, sort_by: &str) {
-    //     self.data.sort_by_key(|item| item);
-    //     self.adjust_cursor();
-    // }
+    pub fn sort(&mut self, sort_by: Option<&str>) {
+        self.data.sort_by_key(|item| match sort_by {
+            Some("addr") => {
+                match item {
+                    VzData::Pointer(p) => p.address.to_string(),
+                    VzData::Module(m) => m.address.to_string(),
+                    VzData::Range(r) => r.address.to_string(),
+                    VzData::Function(f) => f.address.to_string(),
+                    VzData::Variable(v) => v.address.to_string(),
+                    VzData::JavaClass(c) => c.name.to_string(),
+                    VzData::JavaMethod(m) => m.name.to_string(),
+                    VzData::ObjCClass(c) => c.name.to_string(),
+                    VzData::ObjCMethod(m) => m.name.to_string(),
+                    VzData::Thread(t) => t.id.to_string(),
+                    _ => "".to_string(),
+                }
+            },
+            _ => {
+                match item {
+                    VzData::Pointer(p) => p.address.to_string(),
+                    VzData::Module(m) => m.name.to_string(),
+                    VzData::Range(r) => r.address.to_string(),
+                    VzData::Function(f) => f.name.to_string(),
+                    VzData::Variable(v) => v.name.to_string(),
+                    VzData::JavaClass(c) => c.name.to_string(),
+                    VzData::JavaMethod(m) => m.name.to_string(),
+                    VzData::ObjCClass(c) => c.name.to_string(),
+                    VzData::ObjCMethod(m) => m.name.to_string(),
+                    VzData::Thread(f) => f.id.to_string(),
+                    _ => "".to_string(),
+                }
+            },
+        });
+        self.adjust_cursor();
+    }
 }
