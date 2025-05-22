@@ -5,7 +5,7 @@ use super::vzdata::{VzData};
 
 #[derive(Debug, Clone)]
 pub struct Navigator {
-    pub data: Option<VzData>
+    pub data: Option<VzData>,
 }
 
 impl fmt::Display for Navigator {
@@ -13,46 +13,46 @@ impl fmt::Display for Navigator {
         match &self.data {
             Some(data) => match data {
                 VzData::Pointer(p) => write!(f, "{}{}",
-                    format!("{}:", p.base.data_type.to_string().blue()),
+                    format!("{}:", p.base.data_type.to_string()).blue(),
                     format!("{:#x}", p.address).yellow(),
                 ),
                 VzData::Module(m) => write!(f, "{}{}{}",
-                    format!("{}:", m.base.data_type.to_string().blue()),
-                    format!("{} ", m.name).yellow(),
+                    format!("{}:", m.base.data_type.to_string()).blue(),
+                    format!("{}", m.name),
                     format!("@{:#x}", m.address).yellow(),
                 ),
                 VzData::Range(r) => write!(f, "{}{}",
-                    format!("{}:", r.base.data_type.to_string().blue()),
+                    format!("{}:", r.base.data_type.to_string()).blue(),
                     format!("{:#x}", r.address).yellow(),
                 ),
                 VzData::Function(func) => write!(f, "{}{}{}",
-                    format!("{}:", func.base.data_type.to_string().blue()),
-                    format!("{} ", func.name).yellow(),
+                    format!("{}:", func.base.data_type.to_string()).blue(),
+                    format!("{}", func.name),
                     format!("@{:#x}", func.address).yellow(),
                 ),
                 VzData::Variable(v) => write!(f, "{}{}{}",
-                    format!("{}:", v.base.data_type.to_string().blue()),
-                    format!("{} ", v.name).yellow(),
+                    format!("{}:", v.base.data_type.to_string()).blue(),
+                    format!("{}", v.name),
                     format!("@{:#x}", v.address).yellow(),
                 ),
                 VzData::JavaClass(jc) => write!(f, "{}{}",
-                    format!("{}:", jc.base.data_type.to_string().blue()),
+                    format!("{}:", jc.base.data_type.to_string()).blue(),
                     jc.name,
                 ),
                 VzData::JavaMethod(jm) => write!(f, "{}{}",
-                    format!("{}:", jm.base.data_type.to_string().blue()),
+                    format!("{}:", jm.base.data_type.to_string()).blue(),
                     jm.name,
                 ),
                 VzData::ObjCClass(oc) => write!(f, "{}{}",
-                    format!("{}:", oc.base.data_type.to_string().blue()),
+                    format!("{}:", oc.base.data_type.to_string()).blue(),
                     oc.name,
                 ),
                 VzData::ObjCMethod(om) => write!(f, "{}{}",
-                    format!("{}:", om.base.data_type.to_string().blue()),
+                    format!("{}:", om.base.data_type.to_string()).blue(),
                     om.name,
                 ),
                 VzData::Thread(t) => write!(f, "{}{}",
-                    format!("{}:", t.base.data_type.to_string().blue()),
+                    format!("{}:", t.base.data_type.to_string()).blue(),
                     format!("{}", t.id).yellow(),
                 ),
             },
@@ -77,11 +77,50 @@ impl Navigator {
         self.data.as_ref()
     }
     pub fn add(&mut self, offset: u64) {
-        // 만약 address가 있는 VzData라면, 선택된 데이터를 Pointer로 바꾸고 offset만큼 더한다.
-        // 그렇지 않다면, 아무것도 하지 않는다.
         if let Some(data) = self.data.as_mut() {
-            if let VzData::Pointer(p) = data {
-                p.address += offset;
+            match data {
+                VzData::Pointer(p) => p.address += offset,
+                VzData::Module(m) => {
+                    m.address += offset;
+                    *data = VzData::Pointer(m.to_pointer());
+                },
+                VzData::Range(r) => {
+                    r.address += offset;
+                    *data = VzData::Pointer(r.to_pointer());
+                },
+                VzData::Function(func) => {
+                    func.address += offset;
+                    *data = VzData::Pointer(func.to_pointer());
+                },
+                VzData::Variable(v) => {
+                    v.address += offset;
+                    *data = VzData::Pointer(v.to_pointer());
+                },
+                _ => {}
+            }
+        }
+    }
+    pub fn sub(&mut self, offset: u64) {
+        if let Some(data) = self.data.as_mut() {
+            match data {
+                VzData::Pointer(p) => p.address -= offset,
+                VzData::Module(m) => {
+                    m.address -= offset;
+                    *data = VzData::Pointer(m.to_pointer());
+                },
+                VzData::Range(r) => {
+                    r.address -= offset;
+                    *data = VzData::Pointer(r.to_pointer());
+                },
+                VzData::Function(func) => {
+                    func.address -= offset;
+                    *data = VzData::Pointer(func.to_pointer());
+                },
+                VzData::Variable(v) => {
+                    v.address -= offset;
+                    *data = VzData::Pointer(v.to_pointer());
+                },
+                _ => {}
             }
         }
     }

@@ -148,6 +148,19 @@ impl fmt::Display for VzModule {
     }
 }
 
+impl VzModule {
+    pub fn to_pointer(&self) -> VzPointer {
+        let mut bs = self.base.clone();
+        bs.data_type = VzDataType::Pointer;
+        VzPointer {
+            base: bs,
+            address: self.address,
+            size: 8,
+            value_type: VzValueType::Pointer,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzRange {
     pub base: VzBase,
@@ -164,6 +177,19 @@ impl fmt::Display for VzRange {
             format!("({:#x})", self.size).dark_grey(),
             format!("[{}]", self.protection).yellow()
         )
+    }
+}
+
+impl VzRange {
+    pub fn to_pointer(&self) -> VzPointer {
+        let mut bs = self.base.clone();
+        bs.data_type = VzDataType::Pointer;
+        VzPointer {
+            base: bs,
+            address: self.address,
+            size: 8,
+            value_type: VzValueType::Pointer,
+        }
     }
 }
 
@@ -185,6 +211,19 @@ impl fmt::Display for VzFunction {
     }
 }
 
+impl VzFunction {
+    pub fn to_pointer(&self) -> VzPointer {
+        let mut bs = self.base.clone();
+        bs.data_type = VzDataType::Pointer;
+        VzPointer {
+            base: bs,
+            address: self.address,
+            size: 8,
+            value_type: VzValueType::Pointer,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct VzVariable {
     pub base: VzBase,
@@ -200,6 +239,19 @@ impl fmt::Display for VzVariable {
             format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
             format!("({})", self.module).yellow()
         )
+    }
+}
+
+impl VzVariable {
+    pub fn to_pointer(&self) -> VzPointer {
+        let mut bs = self.base.clone();
+        bs.data_type = VzDataType::Pointer;
+        VzPointer {
+            base: bs,
+            address: self.address,
+            size: 8,
+            value_type: VzValueType::Pointer,
+        }
     }
 }
 
@@ -223,16 +275,18 @@ pub struct VzJavaMethod {
     pub base: VzBase,
     pub class: String,
     pub name: String,
-    pub args: Vec<VzValueType>,
+    pub args: Vec<String>,
+    pub return_type: String,
 }
 
 impl fmt::Display for VzJavaMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {} Args: {:?}",
+        write!(f, "{} {}{} -> {} @ {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name,
+            format!("({})", self.args.join(", ")).yellow(),
+            self.return_type.clone().yellow(),
             format!("({})", self.class).yellow(),
-            self.args
         )
     }
 }
@@ -261,7 +315,7 @@ pub struct VzObjCMethod {
 
 impl fmt::Display for VzObjCMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}",
+        write!(f, "{} {} @ {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name,
             format!("({})", self.class).yellow()
@@ -273,15 +327,13 @@ impl fmt::Display for VzObjCMethod {
 pub struct VzThread {
     pub base: VzBase,
     pub id: u64,
-    pub stack: Vec<VzPointer>,
 }
 
 impl fmt::Display for VzThread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} Stack: {:?}", // stack을 디버그 형식으로 출력
+        write!(f, "{} {}",
             format!("[{}]", self.base.data_type).blue(),
             self.id,
-            self.stack
         )
     }
 }

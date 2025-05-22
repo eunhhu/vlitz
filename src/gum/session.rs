@@ -1,5 +1,6 @@
 // src/gum/session.rs
 use frida::{Script, Session};
+use regex::Regex;
 use std::{
     io::{stdin, stdout, Write},
     sync::{Arc, atomic::{AtomicBool, Ordering}},
@@ -9,6 +10,14 @@ use crossterm::{
     terminal, cursor, style::{Stylize}
 };
 use super::{commander::Commander};
+
+fn parse_command(input: &str) -> Vec<String> {
+    let re = Regex::new(r#"("[^"]*")|('[^']*')|(\S+)"#).unwrap();
+    
+    re.find_iter(input)
+        .map(|m| m.as_str().to_string())
+        .collect()
+}
 
 pub fn session_manager(session: &Session, script: &mut Script<'_>, pid: u32) {
     let mut commander = Commander::new(script);
@@ -57,11 +66,11 @@ pub fn session_manager(session: &Session, script: &mut Script<'_>, pid: u32) {
         if input.is_empty() {
             continue;
         }
-        let mut args = input.split_whitespace();
-        let command = args.next().unwrap_or("");
-        match command {
+        let mut args = parse_command(input);
+        let command = args.remove(0);
+        match command.as_str() {
             _ => {
-                if !commander.execute_command(command, args.collect::<Vec<&str>>().as_slice()) {
+                if !commander.execute_command(command.as_str(), args.iter().map(|s| s.as_str()).collect::<Vec<_>>().as_slice()) {
                     break;
                 }
             }

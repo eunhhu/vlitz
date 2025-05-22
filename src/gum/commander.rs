@@ -1,6 +1,8 @@
 // src/gum/commander.rs
 use crossterm::style::Stylize;
-use crate::util::fill;
+use crate::gum::{
+    list::{list_functions, list_ranges, list_variables}
+};
 
 use super::{
     list::list_modules, navigator::Navigator, store::Store, vzdata::VzData
@@ -163,9 +165,47 @@ impl<'a, 'b> Commander<'a, 'b> {
                     Some(|c, a| Commander::exit(c, a)),
                 ),
                 Command::new(
+                    "select",
+                    "Select data",
+                    vec!["sel", "sl"],
+                    vec![
+                        CommandArg::required("selector", "Selector")
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::select(c, a)),
+                ),
+                Command::new(
+                    "deselect",
+                    "Deselect data",
+                    vec!["desel", "dsl"],
+                    vec![],
+                    vec![],
+                    Some(|c, a| Commander::deselect(c, a)),
+                ),
+                Command::new(
+                    "add",
+                    "Add offset to selected data",
+                    vec!["+"],
+                    vec![
+                        CommandArg::required("offset", "Offset")
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::add(c, a)),
+                ),
+                Command::new(
+                    "sub",
+                    "Subtract offset from selected data",
+                    vec!["-"],
+                    vec![
+                        CommandArg::required("offset", "Offset")
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::sub(c, a)),
+                ),
+                Command::new(
                     "field",
                     "Field manipulation commands.",
-                    vec!["f"],
+                    vec!["f", "fld"],
                     vec![
                         CommandArg::optional("page", "Page number")
                     ],
@@ -194,6 +234,30 @@ impl<'a, 'b> Commander<'a, 'b> {
                             vec![CommandArg::optional("type", "Sort type [addr]")],
                             |c, a| Commander::field_sort(c, a),
                         ).alias("s"),
+                        SubCommand::new(
+                            "move",
+                            "Move fields",
+                            vec![
+                                CommandArg::required("from", "Index of data"),
+                                CommandArg::required("to", "Index of data")
+                            ],
+                            |c, a| Commander::field_move(c, a),
+                        ).alias("mv"),
+                        SubCommand::new(
+                            "remove",
+                            "Remove data from field",
+                            vec![
+                                CommandArg::required("index", "Index of data"),
+                                CommandArg::optional("count", "Count of data to remove (default: 1)")
+                            ],
+                            |c, a| Commander::field_remove(c, a),
+                        ).alias("rm").alias("del").alias("delete"),
+                        SubCommand::new(
+                            "clear",
+                            "Clear all fields",
+                            vec![],
+                            |c, a| Commander::field_clear(c, a),
+                        ).alias("cls").alias("clr").alias("cl").alias("c")
                     ],
                     Some(|c, a| Commander::field_list(c, a)),
                 ),
@@ -227,6 +291,36 @@ impl<'a, 'b> Commander<'a, 'b> {
                             vec![CommandArg::optional("type", "Sort type [addr]")],
                             |c, a| Commander::lib_sort(c, a),
                         ).alias("s"),
+                        SubCommand::new(
+                            "save",
+                            "Save data from field",
+                            vec![CommandArg::required("selector", "Selector from field")],
+                            |c, a| Commander::lib_save(c, a),
+                        ).alias("sv"),
+                        SubCommand::new(
+                            "move",
+                            "Move data from one library to another",
+                            vec![
+                                CommandArg::required("from", "Index of data"),
+                                CommandArg::required("to", "Index of data")
+                            ],
+                            |c, a| Commander::lib_move(c, a),
+                        ).alias("mv"),
+                        SubCommand::new(
+                            "remove",
+                            "Remove data from library",
+                            vec![
+                                CommandArg::required("index", "Index of data"),
+                                CommandArg::optional("count", "Count of data to remove (default: 1)")
+                            ],
+                            |c, a| Commander::lib_remove(c, a),
+                        ).alias("rm").alias("del").alias("delete"),
+                        SubCommand::new(
+                            "clear",
+                            "Clear all data",
+                            vec![],
+                            |c, a| Commander::lib_clear(c, a),
+                        ).alias("cls").alias("clr").alias("cl").alias("c")
                     ],
                     Some(|c, a| Commander::lib_list(c, a)),
                 ),
@@ -241,7 +335,25 @@ impl<'a, 'b> Commander<'a, 'b> {
                             "List all modules",
                             vec![CommandArg::optional("filter", "Filter modules")],
                             |c, a| Commander::list_modules(c, a),
-                        ).alias("mods").alias("md")
+                        ).alias("mods").alias("md").alias("m"),
+                        SubCommand::new(
+                            "ranges",
+                            "List all ranges",
+                            vec![CommandArg::optional("filter", "Filter ranges")],
+                            |c, a| Commander::list_ranges(c, a),
+                        ).alias("ranges").alias("rngs").alias("rng").alias("r"),
+                        SubCommand::new(
+                            "functions",
+                            "List all functions",
+                            vec![CommandArg::optional("filter", "Filter functions")],
+                            |c, a| Commander::list_functions(c, a),
+                        ).alias("funcs").alias("fns").alias("fn").alias("f"),
+                        SubCommand::new(
+                            "variables",
+                            "List all variables",
+                            vec![CommandArg::optional("filter", "Filter variables")],
+                            |c, a| Commander::list_variables(c, a),
+                        ).alias("vars").alias("vrs").alias("vr").alias("v"),
                     ],
                     None,
                 )
@@ -419,7 +531,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                         if !args_usage.is_empty() {
                             subcmd_len += 1;
                         }
-                        if subcmd_len < 24 {
+                        if (subcmd_len + cmd.command.len() + 1) < 24 {
                             println!("  {}{}{} {}{}",
                                 " ".repeat(cmd.command.len() + 1),
                                 subcmd_with_args,
@@ -431,7 +543,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                             println!("  {}{}\n    {}{}{}",
                                 " ".repeat(cmd.command.len() + 1),
                                 subcmd_with_args,
-                                " ".repeat(24 - cmd.command.len() - 1),
+                                " ".repeat(24 - 1),
                                 subcmd.description,
                                 aliases
                             );
@@ -454,33 +566,111 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn selector(&mut self, s: &str) -> Result<Vec<&VzData>, String> {
         let re = Regex::new(r"^(?:(\w+):)?(.+)$").expect("Regex compilation failed");
         if let Some(caps) = re.captures(s) {
-            let store_name = caps.get(1).map_or("lib", |m| m.as_str());
-            let selector = caps.get(2).ok_or("No selector provided")?;
-            let selector = selector.as_str();
-            let store = match store_name {
-                "lib" => &self.lib,
-                "field" => &self.field,
-                _ => return Err(format!("Unknown store: {}", store_name)),
-            };
-            let data = store.get_data_by_selection(selector);
-            match data {
-                Ok(data) => Ok(data),
-                Err(e) => {
-                    if store.name == "lib" {
-                        let store = &self.field;
-                        let data = store.get_data_by_selection(selector);
-                        match data {
-                            Ok(data) => Ok(data),
-                            Err(e) => Err(format!("Failed to get data: {}", e)),
+            let explicit_store_capture = caps.get(1);
+            let selector_str = caps.get(2).ok_or_else(|| "No selector provided".to_string())?.as_str();
+            let selector_is_numeric = selector_str.chars().all(char::is_numeric);
+
+            if let Some(store_match) = explicit_store_capture {
+                // Store was EXPLICITLY specified
+                let store_name = store_match.as_str();
+                if store_name == "lib" || store_name == "l" {
+                    // Explicit "lib:selector"
+                    self.lib.get_data_by_selection(selector_str)
+                        .map_err(|e| format!("Selector '{}': search in explicitly specified 'lib' store failed: {}", selector_str, e))
+                        .and_then(|data| if data.is_empty() { Err(format!("Selector '{}': no items found in explicitly specified 'lib' store.", selector_str)) } else { Ok(data) })
+                } else if store_name == "field" || store_name == "fld" || store_name == "f" {
+                    // Explicit "field:selector"
+                    self.field.get_data_by_selection(selector_str)
+                        .map_err(|e| format!("Selector '{}': search in explicitly specified 'field' store failed: {}", selector_str, e))
+                        .and_then(|data| if data.is_empty() { Err(format!("Selector '{}': no items found in explicitly specified 'field' store.", selector_str)) } else { Ok(data) })
+                } else {
+                    Err(format!("Unknown explicitly specified store: {}", store_name))
+                }
+            } else {
+                // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
+                match self.lib.get_data_by_selection(selector_str) {
+                    Ok(lib_data) => {
+                        if lib_data.is_empty() {
+                            // Default "lib" search was empty
+                            if selector_is_numeric {
+                                // Selector is numeric, fallback to "field"
+                                self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                    format!("Selector '{}': no items from 'lib' (default), and 'field' (fallback) search failed: {}", selector_str, field_e)
+                                })
+                            } else {
+                                // Selector non-numeric, no fallback
+                                Err(format!("Selector '{}': no items found in 'lib' (default). Non-numeric selectors do not fall back.", selector_str))
+                            }
+                        } else {
+                            // Default "lib" search successful
+                            Ok(lib_data)
                         }
-                    } else {
-                        Err(format!("Failed to get data: {}", e))
                     }
-                },
+                    Err(lib_e) => {
+                        // Error from default "lib" store
+                        if selector_is_numeric {
+                            // Selector is numeric, fallback to "field"
+                            self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                format!("Selector '{}': 'lib' (default) search failed (Error: {}), and 'field' (fallback) search also failed (Error: {})", selector_str, lib_e, field_e)
+                            })
+                        } else {
+                            // Selector non-numeric, no fallback
+                            Err(format!("Selector '{}': 'lib' (default) search failed (Error: {}). Non-numeric selectors do not fall back.", selector_str, lib_e))
+                        }
+                    }
+                }
             }
         } else {
             Err(format!("Invalid selection format: {}", s))
         }
+    }
+
+    fn select(&mut self, args: &[&str]) -> bool {
+        let selector = args.get(0).unwrap_or(&"");
+        let result = self.selector(selector).map_err(|e| {
+            println!("Failed to select data: {}", e);
+            e
+        });
+        match result {
+            Ok(data) => {
+                if data.len() == 1 {
+                    let item_to_select = data[0].clone();
+                    self.navigator.select(&item_to_select);
+                    true
+                } else {
+                    println!("Multiple data found for selector: {}", selector);
+                    true
+                }
+            },
+            Err(_) => {
+                true
+            }
+        }
+    }
+
+    fn deselect(&mut self, _args: &[&str]) -> bool {
+        self.navigator.deselect();
+        true
+    }
+
+    fn parse_number(s: &str) -> u64 {
+        if s.starts_with("0x") || s.starts_with("0X") {
+            u64::from_str_radix(&s[2..], 16).unwrap_or(0)
+        } else {
+            s.parse::<u64>().unwrap_or(0)
+        }
+    }
+
+    fn add(&mut self, args: &[&str]) -> bool {
+        let offset = args.get(0).map(|s| Self::parse_number(s)).unwrap_or(0);
+        self.navigator.add(offset);
+        true
+    }
+
+    fn sub(&mut self, args: &[&str]) -> bool {
+        let offset = args.get(0).map(|s| Self::parse_number(s)).unwrap_or(0);
+        self.navigator.sub(offset);
+        true
     }
 
     fn field_list(&mut self, args: &[&str]) -> bool {
@@ -517,6 +707,28 @@ impl<'a, 'b> Commander<'a, 'b> {
         if let Some(sort_by) = args.get(0) {
             self.field.sort(Some(sort_by));
         }
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn field_move(&mut self, args: &[&str]) -> bool {
+        let from = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        let to = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        self.field.move_data(from, to);
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn field_remove(&mut self, args: &[&str]) -> bool {
+        let index = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+        self.field.remove_data(index, count);
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn field_clear(&mut self, _args: &[&str]) -> bool {
+        self.field.clear_data();
         println!("{}", self.field.to_string(None));
         true
     }
@@ -559,18 +771,172 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn list_modules(&mut self, args: &[&str]) -> bool {
-        let modules = list_modules(&mut self.script, None)
+    fn lib_save(&mut self, args: &[&str]) -> bool {
+        let datas = self.field.get_data_by_selection(args.get(0).unwrap_or(&""));
+        if let Ok(datas) = datas {
+            self.lib.add_datas(datas.into_iter().map(|d| {
+                let mut d = d.clone();
+                match &mut d {
+                    VzData::Pointer(p) => {p.base.is_saved = true;},
+                    VzData::Module(m) => {m.base.is_saved = true;},
+                    VzData::Range(r) => {r.base.is_saved = true;},
+                    VzData::Function(f) => {f.base.is_saved = true;},
+                    VzData::Variable(v) => {v.base.is_saved = true;},
+                    VzData::JavaClass(c) => {c.base.is_saved = true;},
+                    VzData::JavaMethod(m) => {m.base.is_saved = true;},
+                    VzData::ObjCClass(c) => {c.base.is_saved = true;},
+                    VzData::ObjCMethod(m) => {m.base.is_saved = true;},
+                    VzData::Thread(t) => {t.base.is_saved = true;},
+                }
+                d
+            }).collect());
+        }
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_move(&mut self, args: &[&str]) -> bool {
+        let from = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        let to = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        self.lib.move_data(from, to);
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_remove(&mut self, args: &[&str]) -> bool {
+        let index = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+        let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+        self.lib.remove_data(index, count);
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_clear(&mut self, _args: &[&str]) -> bool {
+        self.lib.clear_data();
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn list_modules(&mut self, _args: &[&str]) -> bool {
+        let filter = _args.get(0).map(|s| s.to_string());
+        let modules = list_modules(&mut self.script, filter.as_deref())
         .unwrap_or(vec![])
         .into_iter()
         .map(|m| VzData::Module(m))
             .collect::<Vec<_>>();
+        self.field.clear_data();
         self.field.add_datas(modules);
         println!("{}", self.field.to_string(None));
         true
     }
 
-    fn debug_exports(&mut self, args: &[&str]) -> bool {
+    fn list_ranges(&mut self, _args: &[&str]) -> bool {
+        let protect = _args.get(0).map(|s| s.to_string());
+        let filter = _args.get(1).map(|s| s.to_string());
+        let ranges = list_ranges(&mut self.script, protect.as_deref(), filter.as_deref())
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|r| VzData::Range(r))
+            .collect::<Vec<_>>();
+        self.field.clear_data();
+        self.field.add_datas(ranges);
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn list_functions(&mut self, _args: &[&str]) -> bool {
+        let filter;
+        let arg0 = _args.get(0).map(|s| s.to_string()).unwrap_or_default();
+        let res = self.selector(arg0.as_str());
+        let module = match res {
+            Ok(data) => {
+                if data.is_empty() {
+                    eprintln!("No data selected");
+                    return true;
+                } else if let Some(VzData::Module(m)) = data.first() {
+                    filter = _args.get(1).map(|s| s.to_string());
+                    m.clone()
+                } else {
+                    eprintln!("Selected data is not a module");
+                    return true;
+                }
+            },
+            Err(e) => { 
+                match self.navigator.get_data() {
+                    Some(vz_data_from_navigator) => {
+                        if let VzData::Module(m) = vz_data_from_navigator {
+                            filter = _args.get(0).map(|s| s.to_string());
+                            m.clone()
+                        } else {
+                            eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
+                            return true;
+                        }
+                    }
+                    None => {
+                        eprintln!("Selector error: {}. Navigator has no data.", e);
+                        return true;
+                    }
+                }
+            },
+        };
+        let functions = list_functions(&mut self.script, module, filter.as_deref())
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|f| VzData::Function(f))
+            .collect::<Vec<_>>();
+        self.field.clear_data();
+        self.field.add_datas(functions);
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn list_variables(&mut self, _args: &[&str]) -> bool {
+        let filter;
+        let arg0 = _args.get(0).map(|s| s.to_string()).unwrap_or_default();
+        let res = self.selector(arg0.as_str());
+        let module = match res {
+            Ok(data) => {
+                if data.is_empty() {
+                    eprintln!("No data selected");
+                    return true;
+                } else if let Some(VzData::Module(m)) = data.first() {
+                    filter = _args.get(1).map(|s| s.to_string());
+                    m.clone()
+                } else {
+                    eprintln!("Selected data is not a module");
+                    return true;
+                }
+            },
+            Err(e) => { 
+                match self.navigator.get_data() {
+                    Some(vz_data_from_navigator) => {
+                        if let VzData::Module(m) = vz_data_from_navigator {
+                            filter = _args.get(0).map(|s| s.to_string());
+                            m.clone()
+                        } else {
+                            eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
+                            return true;
+                        }
+                    }
+                    None => {
+                        eprintln!("Selector error: {}. Navigator has no data.", e);
+                        return true;
+                    }
+                }
+            },
+        };
+        let variables = list_variables(&mut self.script, module, filter.as_deref())
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|v| VzData::Variable(v))
+            .collect::<Vec<_>>();
+        self.field.clear_data();
+        self.field.add_datas(variables);
+        println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn debug_exports(&mut self, _args: &[&str]) -> bool {
         let exports = self.script.list_exports().unwrap();
         println!("{:?}", &exports);
         true

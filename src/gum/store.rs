@@ -1,10 +1,10 @@
 // src/gum/store.rs
 
 use crate::util::lengthed;
-use super::vzdata::VzData;
+use super::{filter::{FilterSegment, FilterValue, FilterOperator, LogicalOperator}, vzdata::{VzData, VzDataType}};
+use std::fmt::Debug; // Required for format!("{:?}") on VzDataType
 use crossterm::style::Stylize;
-use reqwest::header::IterMut;
-use std::{any::Any, collections::BTreeSet, fmt};
+use std::{collections::BTreeSet, fmt};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SelectorType {
@@ -74,7 +74,7 @@ impl Store {
     pub fn move_data(&mut self, from: usize, to: usize) {
         if from < self.data.len() {
             let data = self.data.remove(from);
-            self.data.insert(to, data);
+            self.data.insert(to.min(self.data.len()), data);
         }
     }
 
@@ -139,6 +139,9 @@ impl Store {
     }
 
     pub fn get_cursor_end(&self) -> usize {
+        if self.data.is_empty() {
+            return 0;
+        }
         let end_index = (self.cursor + self.page_size - 1).min(self.data.len() - 1);
         end_index
     }
@@ -154,13 +157,11 @@ impl Store {
         if current_page_num >= max_page_num {
             return;
         }
-        let new_page = current_page_num.saturating_add(count) - 1;
-        println!("new_page_idx: {} {}", new_page, max_page_num);
+        let new_page = (current_page_num.saturating_add(count)).min(max_page_num) - 1;
         let new_cursor = new_page
             .min(max_page_num - 1)
             .max(0)
             .saturating_mul(self.page_size);
-        println!("new_cursor: {}", new_cursor);
         self.set_cursor(new_cursor);
     }
 
@@ -169,12 +170,11 @@ impl Store {
         if current_page_num <= 1 {
             return;
         }
-        let new_page = current_page_num.saturating_sub(count) - 1;
+        let new_page = (current_page_num.saturating_sub(count)).max(1) - 1;
         let new_cursor = new_page
             .min(max_page_num - 1)
             .max(0)
             .saturating_mul(self.page_size);
-        println!("new_cursor: {}", new_cursor);
         self.set_cursor(new_cursor);
     }
 
@@ -236,6 +236,212 @@ impl Store {
         }
     }
 
+    pub fn sort(&mut self, sort_by: Option<&str>) {
+        self.data.sort_by_key(|item| match sort_by {
+            Some("addr") => {
+                match item {
+                    VzData::Pointer(p) => p.address.to_string(),
+                    VzData::Module(m) => m.address.to_string(),
+                    VzData::Range(r) => r.address.to_string(),
+                    VzData::Function(f) => f.address.to_string(),
+                    VzData::Variable(v) => v.address.to_string(),
+                    VzData::JavaClass(c) => c.name.to_string(),
+                    VzData::JavaMethod(m) => m.name.to_string(),
+                    VzData::ObjCClass(c) => c.name.to_string(),
+                    VzData::ObjCMethod(m) => m.name.to_string(),
+                    VzData::Thread(t) => t.id.to_string(),
+                    _ => "".to_string(),
+                }
+            },
+            _ | None => {
+                match item {
+                    VzData::Pointer(p) => p.address.to_string(),
+                    VzData::Module(m) => m.name.to_string(),
+                    VzData::Range(r) => r.address.to_string(),
+                    VzData::Function(f) => f.name.to_string(),
+                    VzData::Variable(v) => v.name.to_string(),
+                    VzData::JavaClass(c) => c.name.to_string(),
+                    VzData::JavaMethod(m) => m.name.to_string(),
+                    VzData::ObjCClass(c) => c.name.to_string(),
+                    VzData::ObjCMethod(m) => m.name.to_string(),
+                    VzData::Thread(f) => f.id.to_string(),
+                    _ => "".to_string(),
+                }
+            },
+        });
+        self.adjust_cursor();
+    }
+
+    pub fn filter(&mut self, filter_segments: Vec<FilterSegment>) {
+        if filter_segments.is_empty() {
+            return; // No filter, do nothing
+        }
+
+        let mut data = self.data.clone();
+        data.retain(|vz_data_item| {
+            let mut iter = filter_segments.iter();
+            let mut current_match_result: bool;
+
+            match iter.next() {
+                Some(FilterSegment::Condition(first_cond)) => {
+                    current_match_result = self.evaluate_condition_for_item(vz_data_item, first_cond);
+                }
+                Some(FilterSegment::Logical(op)) => {
+                    let initial_lhs = match op {
+                        LogicalOperator::And => true,
+                        LogicalOperator::Or => false,
+                    };
+                    if let Some(FilterSegment::Condition(cond_after_op)) = iter.next() {
+                        let rhs_eval = self.evaluate_condition_for_item(vz_data_item, cond_after_op);
+                        current_match_result = match op {
+                            LogicalOperator::And => initial_lhs && rhs_eval,
+                            LogicalOperator::Or => initial_lhs || rhs_eval,
+                        };
+                    } else {
+                        return false; 
+                    }
+                }
+                None => return true, 
+            }
+
+            while let Some(logical_segment) = iter.next() {
+                let op = match logical_segment {
+                    FilterSegment::Logical(op) => op,
+                    _ => return false, 
+                };
+
+                if let Some(FilterSegment::Condition(cond)) = iter.next() {
+                    let rhs_eval = self.evaluate_condition_for_item(vz_data_item, cond);
+                    current_match_result = match op {
+                        LogicalOperator::And => current_match_result && rhs_eval,
+                        LogicalOperator::Or => current_match_result || rhs_eval,
+                    };
+                } else {
+                    return false; 
+                }
+            }
+            current_match_result
+        });
+        self.adjust_cursor();
+    }
+
+    fn evaluate_condition_for_item(&self, vz_data_item: &VzData, condition: &super::filter::FilterCondition) -> bool {
+        if let Some(item_field_value) = self.get_field_value_for_filtering(vz_data_item, &condition.key) {
+            return self.compare_filter_values(&item_field_value, &condition.operator, &condition.value);
+        }
+        false
+    }
+
+    fn get_field_value_for_filtering(&self, vz_data_item: &VzData, key: &str) -> Option<FilterValue> {
+        match key.to_lowercase().as_str() {
+            "name" => match vz_data_item {
+                VzData::Module(m) => Some(FilterValue::String(m.name.clone())),
+                VzData::Function(f) => Some(FilterValue::String(f.name.clone())),
+                VzData::Variable(v) => Some(FilterValue::String(v.name.clone())),
+                VzData::JavaClass(jc) => Some(FilterValue::String(jc.name.clone())),
+                VzData::JavaMethod(jm) => Some(FilterValue::String(jm.name.clone())),
+                VzData::ObjCClass(oc) => Some(FilterValue::String(oc.name.clone())),
+                VzData::ObjCMethod(om) => Some(FilterValue::String(om.name.clone())),
+                _ => None,
+            },
+            "address" => match vz_data_item {
+                VzData::Pointer(p) => Some(FilterValue::Number(p.address as f64)),
+                VzData::Module(m) => Some(FilterValue::Number(m.address as f64)),
+                VzData::Range(r) => Some(FilterValue::Number(r.address as f64)),
+                VzData::Function(f) => Some(FilterValue::Number(f.address as f64)),
+                VzData::Variable(v) => Some(FilterValue::Number(v.address as f64)),
+                _ => None,
+            },
+            "size" => match vz_data_item {
+                VzData::Module(m) => Some(FilterValue::Number(m.size as f64)),    // Assumes m.size is a newtype like Size(u64)
+                VzData::Range(r) => Some(FilterValue::Number(r.size as f64)),      // Assumes r.size is a newtype like Size(u64)
+                _ => None,
+            },
+            "protect" | "protection" => match vz_data_item {
+                VzData::Range(r) => Some(FilterValue::String(r.protection.clone())),
+                _ => None,
+            },
+            "type" => match vz_data_item {
+                VzData::Pointer(p) => Some(FilterValue::String(format!("{:?}", p.base.data_type).to_lowercase())),
+                VzData::Module(m) => Some(FilterValue::String(format!("{:?}", m.base.data_type).to_lowercase())),
+                VzData::Range(r) => Some(FilterValue::String(format!("{:?}", r.base.data_type).to_lowercase())),
+                VzData::Function(f) => Some(FilterValue::String(format!("{:?}", f.base.data_type).to_lowercase())),
+                VzData::Variable(v) => Some(FilterValue::String(format!("{:?}", v.base.data_type).to_lowercase())),
+                VzData::JavaClass(jc) => Some(FilterValue::String(format!("{:?}", jc.base.data_type).to_lowercase())),
+                VzData::JavaMethod(jm) => Some(FilterValue::String(format!("{:?}", jm.base.data_type).to_lowercase())),
+                VzData::ObjCClass(oc) => Some(FilterValue::String(format!("{:?}", oc.base.data_type).to_lowercase())),
+                VzData::ObjCMethod(om) => Some(FilterValue::String(format!("{:?}", om.base.data_type).to_lowercase())),
+                VzData::Thread(t) => Some(FilterValue::String(format!("{:?}", t.base.data_type).to_lowercase())),
+                _ => None,
+            },
+            "value_type" => match vz_data_item {
+                VzData::Pointer(p) => Some(FilterValue::String(format!("{:?}", p.value_type).to_lowercase())),
+                _ => None,
+            },
+            "id" => match vz_data_item {
+                VzData::Thread(t) => Some(FilterValue::Number(t.id as f64)),
+                _ => None,
+            },
+            "module" | "module_name" => match vz_data_item {
+                VzData::Function(f) => Some(FilterValue::String(f.module.clone())),
+                VzData::Variable(v) => Some(FilterValue::String(v.module.clone())),
+                _ => None,
+            },
+            "class" | "class_name" => match vz_data_item {
+                VzData::JavaMethod(jm) => Some(FilterValue::String(jm.class.clone())),
+                VzData::ObjCMethod(om) => Some(FilterValue::String(om.class.clone())),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn compare_filter_values(
+        &self,
+        item_val: &FilterValue,
+        op: &super::filter::FilterOperator,
+        filter_val: &FilterValue,
+    ) -> bool {
+        match (item_val, filter_val) {
+            (FilterValue::String(s_item), FilterValue::String(s_filter)) => match op {
+                FilterOperator::Equal => s_item.eq_ignore_ascii_case(s_filter),
+                FilterOperator::NotEqual => !s_item.eq_ignore_ascii_case(s_filter),
+                FilterOperator::Contains => s_item.to_lowercase().contains(&s_filter.to_lowercase()),
+                FilterOperator::NotContains => !s_item.to_lowercase().contains(&s_filter.to_lowercase()),
+                FilterOperator::LessThan => s_item < s_filter,
+                FilterOperator::LessEqual => s_item <= s_filter,
+                FilterOperator::GreaterThan => s_item > s_filter,
+                FilterOperator::GreaterEqual => s_item >= s_filter,
+            },
+            (FilterValue::Number(n_item), FilterValue::Number(n_filter)) => match op {
+                FilterOperator::Equal => (n_item - n_filter).abs() < f64::EPSILON,
+                FilterOperator::NotEqual => (n_item - n_filter).abs() >= f64::EPSILON,
+                FilterOperator::LessThan => n_item < n_filter,
+                FilterOperator::LessEqual => n_item <= n_filter,
+                FilterOperator::GreaterThan => n_item > n_filter,
+                FilterOperator::GreaterEqual => n_item >= n_filter,
+                _ => false,
+            },
+            (FilterValue::Bool(b_item), FilterValue::Bool(b_filter)) => match op {
+                FilterOperator::Equal => b_item == b_filter,
+                FilterOperator::NotEqual => b_item != b_filter,
+                _ => false,
+            },
+            (FilterValue::Number(n_item), FilterValue::String(s_filter)) => {
+                if let Ok(n_filter) = s_filter.parse::<f64>() {
+                    self.compare_filter_values(&FilterValue::Number(*n_item), op, &FilterValue::Number(n_filter))
+                } else { false }
+            }
+            (FilterValue::String(s_item), FilterValue::Number(n_filter)) => {
+                if let Ok(n_item) = s_item.parse::<f64>() {
+                    self.compare_filter_values(&FilterValue::Number(n_item), op, &FilterValue::Number(*n_filter))
+                } else { false }
+            }
+            _ => false,
+        }
+    }
+
+    
     pub fn to_string(&self, page: Option<usize>) -> String {
         let cursor = if self.data.len() > 0 {
             self.get_cursor()
@@ -257,46 +463,11 @@ impl Store {
         for (i, item) in data.iter().enumerate() {
             let global_idx = self.get_cursor() + i;
             body.push_str(&format!("\n[{}] {}",
-                lengthed(&global_idx.to_string(), max_idx_len).blue(),
+                format!("{:^width$}", global_idx, width = max_idx_len).blue(),
                 item
             ));
         }
         format!("{}{}", header, body)
     }
 
-    pub fn sort(&mut self, sort_by: Option<&str>) {
-        self.data.sort_by_key(|item| match sort_by {
-            Some("addr") => {
-                match item {
-                    VzData::Pointer(p) => p.address.to_string(),
-                    VzData::Module(m) => m.address.to_string(),
-                    VzData::Range(r) => r.address.to_string(),
-                    VzData::Function(f) => f.address.to_string(),
-                    VzData::Variable(v) => v.address.to_string(),
-                    VzData::JavaClass(c) => c.name.to_string(),
-                    VzData::JavaMethod(m) => m.name.to_string(),
-                    VzData::ObjCClass(c) => c.name.to_string(),
-                    VzData::ObjCMethod(m) => m.name.to_string(),
-                    VzData::Thread(t) => t.id.to_string(),
-                    _ => "".to_string(),
-                }
-            },
-            _ => {
-                match item {
-                    VzData::Pointer(p) => p.address.to_string(),
-                    VzData::Module(m) => m.name.to_string(),
-                    VzData::Range(r) => r.address.to_string(),
-                    VzData::Function(f) => f.name.to_string(),
-                    VzData::Variable(v) => v.name.to_string(),
-                    VzData::JavaClass(c) => c.name.to_string(),
-                    VzData::JavaMethod(m) => m.name.to_string(),
-                    VzData::ObjCClass(c) => c.name.to_string(),
-                    VzData::ObjCMethod(m) => m.name.to_string(),
-                    VzData::Thread(f) => f.id.to_string(),
-                    _ => "".to_string(),
-                }
-            },
-        });
-        self.adjust_cursor();
-    }
 }

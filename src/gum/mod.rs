@@ -7,6 +7,7 @@ pub mod store;
 pub mod commander;
 pub mod navigator;
 pub mod list;
+pub mod filter;
 
 use std::process::exit;
 
