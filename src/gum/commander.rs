@@ -1,7 +1,7 @@
 // src/gum/commander.rs
 use crossterm::style::Stylize;
 use crate::gum::{
-    list::{list_functions, list_ranges, list_variables}
+    filter::parse_filter_string, list::{list_functions, list_ranges, list_variables}
 };
 
 use super::{
@@ -215,7 +215,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                 Command::new(
                     "field",
                     "Field manipulation commands.",
-                    vec!["f", "fld"],
+                    vec!["fld", "f"],
                     vec![
                         CommandArg::optional("page", "Page number")
                     ],
@@ -267,14 +267,28 @@ impl<'a, 'b> Commander<'a, 'b> {
                             "Clear all fields",
                             vec![],
                             |c, a| Commander::field_clear(c, a),
-                        ).alias("cls").alias("clr").alias("cl").alias("c")
+                        ).alias("cls").alias("clr").alias("cl").alias("c"),
+                        SubCommand::new(
+                            "filter",
+                            "Filter fields",
+                            vec![CommandArg::required("filter", "Filter as filter expression")],
+                            |c, a| Commander::field_filter(c, a),
+                        ).alias("f").alias("filter"),
                     ],
                     Some(|c, a| Commander::field_list(c, a)),
                 ),
                 Command::new(
+                    "save",
+                    "Save data from field",
+                    vec!["sv"],
+                    vec![CommandArg::required("selector", "Selector from field")],
+                    vec![],
+                    Some(|c, a| Commander::lib_save(c, a)),
+                ),
+                Command::new(
                     "lib",
                     "Library manipulation commands.",
-                    vec!["l"],
+                    vec!["lb", "l"],
                     vec![CommandArg::optional("page", "Page number")],
                     vec![
                         SubCommand::new(
@@ -302,12 +316,6 @@ impl<'a, 'b> Commander<'a, 'b> {
                             |c, a| Commander::lib_sort(c, a),
                         ).alias("s"),
                         SubCommand::new(
-                            "save",
-                            "Save data from field",
-                            vec![CommandArg::required("selector", "Selector from field")],
-                            |c, a| Commander::lib_save(c, a),
-                        ).alias("sv"),
-                        SubCommand::new(
                             "move",
                             "Move data from one library to another",
                             vec![
@@ -330,7 +338,13 @@ impl<'a, 'b> Commander<'a, 'b> {
                             "Clear all data",
                             vec![],
                             |c, a| Commander::lib_clear(c, a),
-                        ).alias("cls").alias("clr").alias("cl").alias("c")
+                        ).alias("cls").alias("clr").alias("cl").alias("c"),
+                        SubCommand::new(
+                            "filter",
+                            "Filter libraries",
+                            vec![CommandArg::required("filter", "Filter expression")],
+                            |c, a| Commander::lib_filter(c, a),
+                        ).alias("f").alias("filter"),
                     ],
                     Some(|c, a| Commander::lib_list(c, a)),
                 ),
@@ -366,7 +380,19 @@ impl<'a, 'b> Commander<'a, 'b> {
                         ).alias("vars").alias("vrs").alias("vr").alias("v"),
                     ],
                     None,
-                )
+                ),
+                Command::new(
+                    "read",
+                    "Read data from memory",
+                    vec!["r"],
+                    vec![
+                        CommandArg::required("address", "Address to read from"),
+                        CommandArg::optional("type", "Type of data to read"),
+                        CommandArg::optional("length", "Length of data to read"),
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::read(c, a)),
+                ),
             ],
         }
     }
@@ -749,6 +775,18 @@ impl<'a, 'b> Commander<'a, 'b> {
         println!("{}", self.field.to_string(None));
         true
     }
+    
+    fn field_filter(&mut self, args: &[&str]) -> bool {
+        let filter_arg = args.get(0).map_or("", |v| v);
+        let filter = parse_filter_string(filter_arg)
+            .unwrap_or_else(|_| {
+                println!("Failed to parse filter string: {}", filter_arg);
+                return Vec::new();
+            });
+        self.field.filter(filter);
+        println!("{}", self.field.to_string(None));
+        true
+    }
 
     fn lib_list(&mut self, args: &[&str]) -> bool {
         let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
@@ -830,6 +868,18 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     fn lib_clear(&mut self, _args: &[&str]) -> bool {
         self.lib.clear_data();
+        println!("{}", self.lib.to_string(None));
+        true
+    }
+
+    fn lib_filter(&mut self, args: &[&str]) -> bool {
+        let filter_arg = args.get(0).map_or("", |v| v);
+        let filter = parse_filter_string(filter_arg)
+            .unwrap_or_else(|_| {
+                println!("Failed to parse filter string: {}", filter_arg);
+                return Vec::new();
+            });
+        self.lib.filter(filter);
         println!("{}", self.lib.to_string(None));
         true
     }
@@ -950,6 +1000,10 @@ impl<'a, 'b> Commander<'a, 'b> {
         self.field.clear_data();
         self.field.add_datas(variables);
         println!("{}", self.field.to_string(None));
+        true
+    }
+
+    fn read(&mut self, args: &[&str]) -> bool {
         true
     }
 

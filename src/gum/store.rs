@@ -278,50 +278,18 @@ impl Store {
         }
 
         let mut data = self.data.clone();
-        data.retain(|vz_data_item| {
-            let mut iter = filter_segments.iter();
-            let mut current_match_result: bool;
-
-            match iter.next() {
-                Some(FilterSegment::Condition(first_cond)) => {
-                    current_match_result = self.evaluate_condition_for_item(vz_data_item, first_cond);
-                }
-                Some(FilterSegment::Logical(op)) => {
-                    let initial_lhs = match op {
+        data.retain(|item: &VzData| {
+            filter_segments.iter().all(|segment| {
+                match segment {
+                    FilterSegment::Condition(cond) => self.evaluate_condition_for_item(item, cond),
+                    FilterSegment::Logical(op) => match op {
                         LogicalOperator::And => true,
                         LogicalOperator::Or => false,
-                    };
-                    if let Some(FilterSegment::Condition(cond_after_op)) = iter.next() {
-                        let rhs_eval = self.evaluate_condition_for_item(vz_data_item, cond_after_op);
-                        current_match_result = match op {
-                            LogicalOperator::And => initial_lhs && rhs_eval,
-                            LogicalOperator::Or => initial_lhs || rhs_eval,
-                        };
-                    } else {
-                        return false; 
-                    }
+                    },
                 }
-                None => return true, 
-            }
-
-            while let Some(logical_segment) = iter.next() {
-                let op = match logical_segment {
-                    FilterSegment::Logical(op) => op,
-                    _ => return false, 
-                };
-
-                if let Some(FilterSegment::Condition(cond)) = iter.next() {
-                    let rhs_eval = self.evaluate_condition_for_item(vz_data_item, cond);
-                    current_match_result = match op {
-                        LogicalOperator::And => current_match_result && rhs_eval,
-                        LogicalOperator::Or => current_match_result || rhs_eval,
-                    };
-                } else {
-                    return false; 
-                }
-            }
-            current_match_result
+            })
         });
+        self.data = data;
         self.adjust_cursor();
     }
 

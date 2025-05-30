@@ -46,8 +46,8 @@ function filtered(arr, filter) {
             }
             return String(a) >= String(b);
         },
-        ':': (a, b) => String(a).includes(String(b)),
-        '!:': (a, b) => !String(a).includes(String(b)),
+        ':': (a, b) => String(a).toLowerCase().includes(String(b).toLowerCase()),
+        '!:': (a, b) => !String(a).toLowerCase().includes(String(b).toLowerCase()),
     };
 
     const evaluate = (item, condition) => {
@@ -117,6 +117,8 @@ rpc.exports = {
     writer_double: (a, v) => ptr(a).writeDouble(v),
     writer_string: (a, v) => ptr(a).writeUtf8String(v),
     writer_bytes: (a, v) => ptr(a).writeByteArray(v),
+    // instruction
+    instruction: (a) => Instruction.parse(ptr(a)),
     // list
     list_modules: (filter) => filtered(Process.enumerateModules().map(m => {
         return {
