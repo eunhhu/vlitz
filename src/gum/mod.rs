@@ -17,6 +17,13 @@ use frida::{Device, ScriptOption};
 use handler::Handler;
 use session::session_manager;
 
+fn attach_pid<'a>(device: &'a Device, pid: u32) -> (frida::Session<'a>, u32) {
+    (device.attach(pid).unwrap_or_else(|e| {
+        println!("{} {} ({})", "Failed to attach process:".red(), pid.to_string().yellow(), e);
+        exit(0);
+    }), pid)
+}
+
 pub fn attach(device: &mut Device, args: &TargetArgs) {
     let (session, pid) = if let Some(_pid) = args.attach_pid {
         let pid: u32 = device
@@ -28,7 +35,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
                 println!("{} {}", "Process not found:".red(), _pid.to_string().yellow());
                 exit(0);
             });
-        (device.attach(pid).unwrap(), pid)
+        attach_pid(device, pid)
     } else if let Some(ref file) = args.file {
         let pid = device
             .spawn(file, &frida::SpawnOptions::new())
@@ -36,7 +43,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
                 println!("{} {} ({})", "Failed to spawn process:".red(), file.to_string().yellow(), e);
                 exit(0);
             });
-        (device.attach(pid).unwrap(), pid)
+        attach_pid(device, pid)
     } else if let Some(ref name) = args.attach_name {
         let pid = device
             .enumerate_processes()
@@ -47,7 +54,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
                 println!("{} {}", "Process not found:".red(), name.to_string().yellow());
                 exit(0);
             });
-        (device.attach(pid).unwrap(), pid)
+        attach_pid(device, pid)
     } else if let Some(ref name) = args.attach_identifier {
         let pid = device
             .enumerate_processes()
@@ -58,7 +65,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
                 println!("{} {}", "Process not found:".red(), name.to_string().yellow());
                 exit(0);
             });
-        (device.attach(pid).unwrap(), pid)
+        attach_pid(device, pid)
     } else if let Some(ref name) = args.target {
         let pid = device
             .enumerate_processes()
@@ -69,7 +76,7 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
                 println!("{} {}", "Process not found:".red(), name.to_string().yellow());
                 exit(0);
             });
-        (device.attach(pid).unwrap(), pid)
+        attach_pid(device, pid)
     } else {
         println!("{}", "No target specified".red());
         exit(0);
