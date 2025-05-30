@@ -1,7 +1,7 @@
 // src/gum/navigator.rs
 use std::fmt;
 use crossterm::style::Stylize;
-use super::vzdata::{VzData};
+use super::vzdata::{VzBase, VzData, VzDataType, VzPointer, VzValueType};
 
 #[derive(Debug, Clone)]
 pub struct Navigator {
@@ -122,6 +122,40 @@ impl Navigator {
                 },
                 _ => {}
             }
+        }
+    }
+    pub fn goto(&mut self, address: u64) {
+        if let Some(data) = self.data.as_mut() {
+            match data {
+                VzData::Pointer(p) => p.address = address,
+                VzData::Module(m) => {
+                    m.address = address;
+                    *data = VzData::Pointer(m.to_pointer());
+                },
+                VzData::Range(r) => {
+                    r.address = address;
+                    *data = VzData::Pointer(r.to_pointer());
+                },
+                VzData::Function(func) => {
+                    func.address = address;
+                    *data = VzData::Pointer(func.to_pointer());
+                },
+                VzData::Variable(v) => {
+                    v.address = address;
+                    *data = VzData::Pointer(v.to_pointer());
+                },
+                _ => {}
+            }
+        } else {
+            self.data = Some(VzData::Pointer(VzPointer {
+                base: VzBase {
+                    data_type: VzDataType::Pointer,
+                    is_saved: false,
+                },
+                address,
+                size: 8,
+                value_type: VzValueType::Pointer,
+            }));
         }
     }
 }

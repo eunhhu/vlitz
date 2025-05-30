@@ -203,6 +203,16 @@ impl<'a, 'b> Commander<'a, 'b> {
                     Some(|c, a| Commander::sub(c, a)),
                 ),
                 Command::new(
+                    "goto",
+                    "Go to address",
+                    vec!["go", ":"],
+                    vec![
+                        CommandArg::required("address", "Address")
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::goto(c, a)),
+                ),
+                Command::new(
                     "field",
                     "Field manipulation commands.",
                     vec!["f", "fld"],
@@ -670,6 +680,13 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn sub(&mut self, args: &[&str]) -> bool {
         let offset = args.get(0).map(|s| Self::parse_number(s)).unwrap_or(0);
         self.navigator.sub(offset);
+        true
+    }
+
+    fn goto(&mut self, args: &[&str]) -> bool {
+        let address = args.get(0).map(|s| Self::parse_number(s))
+            .expect("Missing address");
+        self.navigator.goto(address);
         true
     }
 
