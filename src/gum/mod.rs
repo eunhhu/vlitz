@@ -8,6 +8,7 @@ pub mod commander;
 pub mod navigator;
 pub mod list;
 pub mod filter;
+pub mod memory;
 
 use std::process::exit;
 

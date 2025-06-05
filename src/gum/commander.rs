@@ -1004,6 +1004,7 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn read(&mut self, args: &[&str]) -> bool {
+        // println!("{}", value);
         true
     }
 
