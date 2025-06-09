@@ -5,6 +5,7 @@ use crate::gum::{
 };
 use crate::util::logger;
 use crossterm::style::Stylize;
+use crate::util::logger;
 
 use super::{list::list_modules, navigator::Navigator, store::Store, vzdata::VzData};
 use frida::Script;
