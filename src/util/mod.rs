@@ -1,3 +1,4 @@
+pub mod logger;
 use crossterm::style::Stylize;
 use unicode_segmentation::UnicodeSegmentation;
 

@@ -24,13 +24,13 @@ pub fn session_manager(session: &Session, script: &mut Script<'_>, pid: u32) {
     let version = env!("CARGO_PKG_VERSION");
     let title = format!("vlitz v{}", version);
     if let Err(e) = stdout().execute(terminal::SetTitle(title)) {
-        eprintln!("Failed to set terminal title: {}", e);
+        crate::util::logger::error(&format!("Failed to set terminal title: {}", e));
     }
     if let Err(e) = stdout().execute(terminal::Clear(terminal::ClearType::All)) {
-        eprintln!("Failed to clear terminal: {}", e);
+        crate::util::logger::error(&format!("Failed to clear terminal: {}", e));
     }
     if let Err(e) = stdout().execute(cursor::MoveTo(0, 0)) {
-        eprintln!("Failed to move cursor: {}", e);
+        crate::util::logger::error(&format!("Failed to move cursor: {}", e));
     }
     println!(
         "{}",
@@ -51,7 +51,7 @@ pub fn session_manager(session: &Session, script: &mut Script<'_>, pid: u32) {
         r.store(false, Ordering::SeqCst);
     })
     .unwrap_or_else(|e| {
-        eprintln!("Error setting Ctrl-C handler: {}", e);
+        crate::util::logger::error(&format!("Error setting Ctrl-C handler: {}", e));
         std::process::exit(1);
     });
     loop {
@@ -61,10 +61,10 @@ pub fn session_manager(session: &Session, script: &mut Script<'_>, pid: u32) {
         }
         let write_str = format!("{}>", commander.navigator);
         if let Err(e) = stdout().write(write_str.as_bytes()) {
-            eprintln!("Write error: {}", e);
+            crate::util::logger::error(&format!("Write error: {}", e));
         }
         if let Err(e) = stdout().flush() {
-            eprintln!("Flush error: {}", e);
+            crate::util::logger::error(&format!("Flush error: {}", e));
         }
         let mut input = String::new();
         let bytes_read = stdin().read_line(&mut input);
