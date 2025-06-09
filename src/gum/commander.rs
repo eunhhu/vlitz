@@ -1,12 +1,11 @@
 // src/gum/commander.rs
-use crossterm::style::Stylize;
 use crate::gum::{
-    filter::parse_filter_string, list::{list_functions, list_ranges, list_variables}
+    filter::parse_filter_string,
+    list::{list_functions, list_ranges, list_variables},
 };
+use crossterm::style::Stylize;
 
-use super::{
-    list::list_modules, navigator::Navigator, store::Store, vzdata::VzData
-};
+use super::{list::list_modules, navigator::Navigator, store::Store, vzdata::VzData};
 use frida::Script;
 use regex::Regex;
 use std::{fmt, vec};
@@ -57,12 +56,7 @@ struct SubCommand {
 }
 
 impl SubCommand {
-    fn new(
-        name: &str,
-        description: &str,
-        args: Vec<CommandArg>,
-        execute: CommandHandler,
-    ) -> Self {
+    fn new(name: &str, description: &str, args: Vec<CommandArg>, execute: CommandHandler) -> Self {
         Self {
             name: name.to_string(),
             aliases: Vec::new(),
@@ -118,17 +112,17 @@ pub struct Commander<'a, 'b> {
 
 impl<'a, 'b> Commander<'a, 'b> {
     pub fn new(script: &'a mut Script<'b>) -> Self {
-        let env_value = script.exports.call("get_env", None)
+        let env_value = script
+            .exports
+            .call("get_env", None)
             .expect("Failed to call get_env")
             .expect("Failed to get env value");
-        let env_arr = env_value.as_array().unwrap();
+        let env_arr = env_value.as_array().cloned().unwrap_or_default();
+        let os = env_arr.get(0).and_then(|v| v.as_str()).unwrap_or("");
+        let arch = env_arr.get(1).and_then(|v| v.as_str()).unwrap_or("");
         Commander {
             script,
-            env: format!(
-                "{} {}",
-                env_arr[0].as_str().unwrap_or(""),
-                env_arr[1].as_str().unwrap_or("")
-            ),
+            env: format!("{} {}", os, arch),
             field: Store::new("Field".to_string()),
             lib: Store::new("Lib".to_string()),
             navigator: Navigator::new(),
@@ -138,14 +132,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "Debug functions",
                     vec!["d"],
                     vec![],
-                    vec![
-                        SubCommand::new(
-                            "exports",
-                            "List exports",
-                            vec![],
-                            |c, a| Commander::debug_exports(c, a),
-                        ).alias("e")
-                    ],
+                    vec![SubCommand::new("exports", "List exports", vec![], |c, a| {
+                        Commander::debug_exports(c, a)
+                    })
+                    .alias("e")],
                     None,
                 ),
                 Command::new(
@@ -168,9 +158,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "select",
                     "Select data",
                     vec!["sel", "sl"],
-                    vec![
-                        CommandArg::required("selector", "Selector")
-                    ],
+                    vec![CommandArg::required("selector", "Selector")],
                     vec![],
                     Some(|c, a| Commander::select(c, a)),
                 ),
@@ -186,9 +174,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "add",
                     "Add offset to selected data",
                     vec!["+"],
-                    vec![
-                        CommandArg::required("offset", "Offset")
-                    ],
+                    vec![CommandArg::required("offset", "Offset")],
                     vec![],
                     Some(|c, a| Commander::add(c, a)),
                 ),
@@ -196,9 +182,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "sub",
                     "Subtract offset from selected data",
                     vec!["-"],
-                    vec![
-                        CommandArg::required("offset", "Offset")
-                    ],
+                    vec![CommandArg::required("offset", "Offset")],
                     vec![],
                     Some(|c, a| Commander::sub(c, a)),
                 ),
@@ -206,9 +190,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "goto",
                     "Go to address",
                     vec!["go", ":"],
-                    vec![
-                        CommandArg::required("address", "Address")
-                    ],
+                    vec![CommandArg::required("address", "Address")],
                     vec![],
                     Some(|c, a| Commander::goto(c, a)),
                 ),
@@ -216,64 +198,80 @@ impl<'a, 'b> Commander<'a, 'b> {
                     "field",
                     "Field manipulation commands.",
                     vec!["fld", "f"],
-                    vec![
-                        CommandArg::optional("page", "Page number")
-                    ],
+                    vec![CommandArg::optional("page", "Page number")],
                     vec![
                         SubCommand::new(
                             "list",
                             "List fields with optional page number",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_list(c, a),
-                        ).alias("ls").alias("l"),
+                        )
+                        .alias("ls")
+                        .alias("l"),
                         SubCommand::new(
                             "next",
                             "Go to next page of fields",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_next(c, a),
-                        ).alias("n"),
+                        )
+                        .alias("n"),
                         SubCommand::new(
                             "prev",
                             "Go to previous page of fields",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::field_prev(c, a),
-                        ).alias("p"),
+                        )
+                        .alias("p"),
                         SubCommand::new(
                             "sort",
                             "Sort fields by name",
                             vec![CommandArg::optional("type", "Sort type [addr]")],
                             |c, a| Commander::field_sort(c, a),
-                        ).alias("s"),
+                        )
+                        .alias("s"),
                         SubCommand::new(
                             "move",
                             "Move fields",
                             vec![
                                 CommandArg::required("from", "Index of data"),
-                                CommandArg::required("to", "Index of data")
+                                CommandArg::required("to", "Index of data"),
                             ],
                             |c, a| Commander::field_move(c, a),
-                        ).alias("mv"),
+                        )
+                        .alias("mv"),
                         SubCommand::new(
                             "remove",
                             "Remove data from field",
                             vec![
                                 CommandArg::required("index", "Index of data"),
-                                CommandArg::optional("count", "Count of data to remove (default: 1)")
+                                CommandArg::optional(
+                                    "count",
+                                    "Count of data to remove (default: 1)",
+                                ),
                             ],
                             |c, a| Commander::field_remove(c, a),
-                        ).alias("rm").alias("del").alias("delete"),
-                        SubCommand::new(
-                            "clear",
-                            "Clear all fields",
-                            vec![],
-                            |c, a| Commander::field_clear(c, a),
-                        ).alias("cls").alias("clr").alias("cl").alias("c"),
+                        )
+                        .alias("rm")
+                        .alias("del")
+                        .alias("delete"),
+                        SubCommand::new("clear", "Clear all fields", vec![], |c, a| {
+                            Commander::field_clear(c, a)
+                        })
+                        .alias("cls")
+                        .alias("clr")
+                        .alias("cl")
+                        .alias("c"),
                         SubCommand::new(
                             "filter",
                             "Filter fields",
-                            vec![CommandArg::required("filter", "Filter as filter expression")],
+                            vec![CommandArg::required(
+                                "filter",
+                                "Filter as filter expression",
+                            )],
                             |c, a| Commander::field_filter(c, a),
-                        ).alias("f").alias("filter"),
+                        )
+                        .alias("f")
+                        .alias("filter"),
                     ],
                     Some(|c, a| Commander::field_list(c, a)),
                 ),
@@ -296,55 +294,70 @@ impl<'a, 'b> Commander<'a, 'b> {
                             "List libraries with optional page number",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::lib_list(c, a),
-                        ).alias("ls").alias("l"),
+                        )
+                        .alias("ls")
+                        .alias("l"),
                         SubCommand::new(
                             "next",
                             "Go to next page of libraries",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::lib_next(c, a),
-                        ).alias("n"),
+                        )
+                        .alias("n"),
                         SubCommand::new(
                             "prev",
                             "Go to previous page of libraries",
                             vec![CommandArg::optional("page", "Page number")],
                             |c, a| Commander::lib_prev(c, a),
-                        ).alias("p"),
+                        )
+                        .alias("p"),
                         SubCommand::new(
                             "sort",
                             "Sort libraries by name",
                             vec![CommandArg::optional("type", "Sort type [addr]")],
                             |c, a| Commander::lib_sort(c, a),
-                        ).alias("s"),
+                        )
+                        .alias("s"),
                         SubCommand::new(
                             "move",
                             "Move data from one library to another",
                             vec![
                                 CommandArg::required("from", "Index of data"),
-                                CommandArg::required("to", "Index of data")
+                                CommandArg::required("to", "Index of data"),
                             ],
                             |c, a| Commander::lib_move(c, a),
-                        ).alias("mv"),
+                        )
+                        .alias("mv"),
                         SubCommand::new(
                             "remove",
                             "Remove data from library",
                             vec![
                                 CommandArg::required("index", "Index of data"),
-                                CommandArg::optional("count", "Count of data to remove (default: 1)")
+                                CommandArg::optional(
+                                    "count",
+                                    "Count of data to remove (default: 1)",
+                                ),
                             ],
                             |c, a| Commander::lib_remove(c, a),
-                        ).alias("rm").alias("del").alias("delete"),
-                        SubCommand::new(
-                            "clear",
-                            "Clear all data",
-                            vec![],
-                            |c, a| Commander::lib_clear(c, a),
-                        ).alias("cls").alias("clr").alias("cl").alias("c"),
+                        )
+                        .alias("rm")
+                        .alias("del")
+                        .alias("delete"),
+                        SubCommand::new("clear", "Clear all data", vec![], |c, a| {
+                            Commander::lib_clear(c, a)
+                        })
+                        .alias("cls")
+                        .alias("clr")
+                        .alias("cl")
+                        .alias("c"),
                         SubCommand::new(
                             "filter",
                             "Filter libraries",
                             vec![CommandArg::required("filter", "Filter expression")],
                             |c, a| Commander::lib_filter(c, a),
-                        ).alias("f").alias("filter"),
+                        )
+                        .alias("f")
+                        .alias("filter"),
                     ],
                     Some(|c, a| Commander::lib_list(c, a)),
                 ),
@@ -359,25 +372,40 @@ impl<'a, 'b> Commander<'a, 'b> {
                             "List all modules",
                             vec![CommandArg::optional("filter", "Filter modules")],
                             |c, a| Commander::list_modules(c, a),
-                        ).alias("mods").alias("md").alias("m"),
+                        )
+                        .alias("mods")
+                        .alias("md")
+                        .alias("m"),
                         SubCommand::new(
                             "ranges",
                             "List all ranges",
                             vec![CommandArg::optional("filter", "Filter ranges")],
                             |c, a| Commander::list_ranges(c, a),
-                        ).alias("ranges").alias("rngs").alias("rng").alias("r"),
+                        )
+                        .alias("ranges")
+                        .alias("rngs")
+                        .alias("rng")
+                        .alias("r"),
                         SubCommand::new(
                             "functions",
                             "List all functions",
                             vec![CommandArg::optional("filter", "Filter functions")],
                             |c, a| Commander::list_functions(c, a),
-                        ).alias("funcs").alias("fns").alias("fn").alias("f"),
+                        )
+                        .alias("funcs")
+                        .alias("fns")
+                        .alias("fn")
+                        .alias("f"),
                         SubCommand::new(
                             "variables",
                             "List all variables",
                             vec![CommandArg::optional("filter", "Filter variables")],
                             |c, a| Commander::list_variables(c, a),
-                        ).alias("vars").alias("vrs").alias("vr").alias("v"),
+                        )
+                        .alias("vars")
+                        .alias("vrs")
+                        .alias("vr")
+                        .alias("v"),
                     ],
                     None,
                 ),
@@ -398,16 +426,21 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub fn execute_command(&mut self, command: &str, args: &[&str]) -> bool {
-        if let Some(cmd) = self.commands.iter().find(|c| c.command == command || c.aliases.contains(&command.to_string())) {
+        if let Some(cmd) = self
+            .commands
+            .iter()
+            .find(|c| c.command == command || c.aliases.contains(&command.to_string()))
+        {
             if !cmd.subcommands.is_empty() {
                 if let Some((subcommand, sub_args)) = args.split_first() {
-                    if let Some(sub_cmd) = cmd.subcommands.iter().find(|s| 
+                    if let Some(sub_cmd) = cmd.subcommands.iter().find(|s| {
                         s.name == *subcommand || s.aliases.contains(&subcommand.to_string())
-                    ) {
+                    }) {
                         // Check required arguments for the subcommand
                         let required_args = sub_cmd.args.iter().filter(|a| a.required).count();
                         if sub_args.len() < required_args {
-                            println!("{} Expected at least {} arguments, got {}",
+                            println!(
+                                "{} Expected at least {} arguments, got {}",
                                 "Error:".red(),
                                 required_args,
                                 sub_args.len()
@@ -421,7 +454,11 @@ impl<'a, 'b> Commander<'a, 'b> {
                 if let Some(default_exec) = &cmd.default_execute {
                     return default_exec(self, args);
                 }
-                println!("{} {}", "No subcommand specified.".red(), format!("Use 'help {}' for more information.", command).dark_grey());
+                println!(
+                    "{} {}",
+                    "No subcommand specified.".red(),
+                    format!("Use 'help {}' for more information.", command).dark_grey()
+                );
                 return true;
             } else if let Some(exec) = &cmd.default_execute {
                 return exec(self, args);
@@ -434,17 +471,27 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     fn help(&mut self, args: &[&str]) -> bool {
         if !args.is_empty() {
-            let command = self.commands.iter().find(|c| c.command == args[0] || c.aliases.contains(&args[0].to_string()));
+            let command = self
+                .commands
+                .iter()
+                .find(|c| c.command == args[0] || c.aliases.contains(&args[0].to_string()));
             if let Some(cmd) = command {
                 // Usage
-                let args_usage = cmd.args.iter()
-                .map(|arg| arg.to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-                println!("\n{} {}{}",
+                let args_usage = cmd
+                    .args
+                    .iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!(
+                    "\n{} {}{}",
                     "Usage:".green(),
                     cmd.command.clone().yellow(),
-                    if args_usage.is_empty() { "".to_string() } else { format!(" {}", args_usage) }
+                    if args_usage.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(" {}", args_usage)
+                    }
                 );
                 // Description
                 println!("{} {}", "Description:".green(), cmd.description);
@@ -453,7 +500,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                     println!("\n{}", "Arguments:".green());
                     for arg in &cmd.args {
                         let required = if arg.required { " (required)" } else { "" };
-                        println!("  {:<15} {}{}",
+                        println!(
+                            "  {:<15} {}{}",
                             format!("{}:", arg.name),
                             arg.description,
                             required.yellow()
@@ -463,12 +511,13 @@ impl<'a, 'b> Commander<'a, 'b> {
 
                 // Aliases
                 if !cmd.aliases.is_empty() {
-                    println!("\n{} {}",
+                    println!(
+                        "\n{} {}",
                         "Aliases:".green(),
                         cmd.aliases.join(", ").dark_grey()
                     );
                 }
-                
+
                 // Subcommands
                 if !cmd.subcommands.is_empty() {
                     println!("\n{}", "Subcommands:".green());
@@ -478,38 +527,39 @@ impl<'a, 'b> Commander<'a, 'b> {
                         } else {
                             String::new()
                         };
-                        let sub_and_args = format!("{} {}", sub.name,
-                            sub.args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>().join(" ")
+                        let sub_and_args = format!(
+                            "{} {}",
+                            sub.name,
+                            sub.args
+                                .iter()
+                                .map(|arg| arg.to_string())
+                                .collect::<Vec<_>>()
+                                .join(" ")
                         );
                         if sub_and_args.len() > 15 {
-                            println!("  {}",
-                                sub_and_args
-                            );
-                            println!("  {} {}{}",
-                                " ".repeat(15),
-                                sub.description,
-                                aliases
-                            );
+                            println!("  {}", sub_and_args);
+                            println!("  {} {}{}", " ".repeat(15), sub.description, aliases);
                         } else {
-                            println!("  {:<15} {}{}",
-                                sub_and_args,
-                                sub.description,
-                                aliases
-                            );
+                            println!("  {:<15} {}{}", sub_and_args, sub.description, aliases);
                         }
                     }
                 }
-                
+
                 return true;
             }
-            
+
             println!("{} {}", "Unknown command:".red(), args[0]);
             true
         } else {
             // Show all commands
-            println!("  {}{} {}", "Command".green().bold(), " ".repeat(24 - "Command".len()), "Description".green().bold());
+            println!(
+                "  {}{} {}",
+                "Command".green().bold(),
+                " ".repeat(24 - "Command".len()),
+                "Description".green().bold()
+            );
             println!("  {:-<24} {:-<40}", "", "");
-            
+
             for cmd in &self.commands {
                 let aliases = if !cmd.aliases.is_empty() {
                     format!(" ({})", cmd.aliases.join(", ").dark_grey())
@@ -517,11 +567,13 @@ impl<'a, 'b> Commander<'a, 'b> {
                     String::new()
                 };
 
-                let args_usage = cmd.args.iter()
+                let args_usage = cmd
+                    .args
+                    .iter()
                     .map(|arg| arg.to_string())
                     .collect::<Vec<_>>()
                     .join(" ");
-                
+
                 let cmd_with_args: String = if args_usage.is_empty() {
                     cmd.command.clone().yellow().to_string()
                 } else {
@@ -531,16 +583,18 @@ impl<'a, 'b> Commander<'a, 'b> {
                 if !args_usage.is_empty() {
                     cmd_len += 1;
                 }
-                
+
                 if cmd_len < 24 {
-                    println!("  {}{} {}{}",
+                    println!(
+                        "  {}{} {}{}",
                         cmd_with_args,
                         " ".repeat(24 - cmd_len),
                         cmd.description,
                         aliases
                     );
                 } else {
-                    println!("  {}\n  {}{}",
+                    println!(
+                        "  {}\n  {}{}",
                         cmd_with_args,
                         " ".repeat(24),
                         format!("{}{}", cmd.description, aliases)
@@ -549,12 +603,14 @@ impl<'a, 'b> Commander<'a, 'b> {
 
                 if !cmd.subcommands.is_empty() {
                     for subcmd in &cmd.subcommands {
-                        let aliases = if !subcmd.aliases.is_empty(){
+                        let aliases = if !subcmd.aliases.is_empty() {
                             format!(" ({})", subcmd.aliases.join(", ").dark_grey())
                         } else {
                             String::new()
                         };
-                        let args_usage = subcmd.args.iter()
+                        let args_usage = subcmd
+                            .args
+                            .iter()
                             .map(|arg| arg.to_string())
                             .collect::<Vec<_>>()
                             .join(" ");
@@ -568,7 +624,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                             subcmd_len += 1;
                         }
                         if (subcmd_len + cmd.command.len() + 1) < 24 {
-                            println!("  {}{}{} {}{}",
+                            println!(
+                                "  {}{}{} {}{}",
                                 " ".repeat(cmd.command.len() + 1),
                                 subcmd_with_args,
                                 " ".repeat(24 - subcmd_len - cmd.command.len() - 1),
@@ -576,7 +633,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                                 aliases
                             );
                         } else {
-                            println!("  {}{}\n    {}{}{}",
+                            println!(
+                                "  {}{}\n    {}{}{}",
                                 " ".repeat(cmd.command.len() + 1),
                                 subcmd_with_args,
                                 " ".repeat(24 - 1),
@@ -588,8 +646,12 @@ impl<'a, 'b> Commander<'a, 'b> {
                 }
             }
 
-            println!("\nType \'{} {}\' for more information", "help".yellow().bold(), "[command]".bold());
-            
+            println!(
+                "\nType \'{} {}\' for more information",
+                "help".yellow().bold(),
+                "[command]".bold()
+            );
+
             true
         }
     }
@@ -603,7 +665,10 @@ impl<'a, 'b> Commander<'a, 'b> {
         let re = Regex::new(r"^(?:(\w+):)?(.+)$").expect("Regex compilation failed");
         if let Some(caps) = re.captures(s) {
             let explicit_store_capture = caps.get(1);
-            let selector_str = caps.get(2).ok_or_else(|| "No selector provided".to_string())?.as_str();
+            let selector_str = caps
+                .get(2)
+                .ok_or_else(|| "No selector provided".to_string())?
+                .as_str();
             let selector_is_numeric = selector_str.chars().all(char::is_numeric);
 
             if let Some(store_match) = explicit_store_capture {
@@ -620,7 +685,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         .map_err(|e| format!("Selector '{}': search in explicitly specified 'field' store failed: {}", selector_str, e))
                         .and_then(|data| if data.is_empty() { Err(format!("Selector '{}': no items found in explicitly specified 'field' store.", selector_str)) } else { Ok(data) })
                 } else {
-                    Err(format!("Unknown explicitly specified store: {}", store_name))
+                    Err(format!(
+                        "Unknown explicitly specified store: {}",
+                        store_name
+                    ))
                 }
             } else {
                 // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
@@ -677,10 +745,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                     println!("Multiple data found for selector: {}", selector);
                     true
                 }
-            },
-            Err(_) => {
-                true
             }
+            Err(_) => true,
         }
     }
 
@@ -689,30 +755,39 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn parse_number(s: &str) -> u64 {
+    fn parse_number(s: &str) -> Result<u64, String> {
         if s.starts_with("0x") || s.starts_with("0X") {
-            u64::from_str_radix(&s[2..], 16).unwrap_or(0)
+            u64::from_str_radix(&s[2..], 16).map_err(|_| format!("Invalid hex number: {}", s))
         } else {
-            s.parse::<u64>().unwrap_or(0)
+            s.parse::<u64>()
+                .map_err(|_| format!("Invalid number: {}", s))
         }
     }
 
     fn add(&mut self, args: &[&str]) -> bool {
-        let offset = args.get(0).map(|s| Self::parse_number(s)).unwrap_or(0);
-        self.navigator.add(offset);
+        match args.get(0).map(|s| Self::parse_number(s)) {
+            Some(Ok(offset)) => self.navigator.add(offset),
+            Some(Err(e)) => eprintln!("Invalid offset: {}", e),
+            None => eprintln!("Offset argument required"),
+        }
         true
     }
 
     fn sub(&mut self, args: &[&str]) -> bool {
-        let offset = args.get(0).map(|s| Self::parse_number(s)).unwrap_or(0);
-        self.navigator.sub(offset);
+        match args.get(0).map(|s| Self::parse_number(s)) {
+            Some(Ok(offset)) => self.navigator.sub(offset),
+            Some(Err(e)) => eprintln!("Invalid offset: {}", e),
+            None => eprintln!("Offset argument required"),
+        }
         true
     }
 
     fn goto(&mut self, args: &[&str]) -> bool {
-        let address = args.get(0).map(|s| Self::parse_number(s))
-            .expect("Missing address");
-        self.navigator.goto(address);
+        match args.get(0).map(|s| Self::parse_number(s)) {
+            Some(Ok(addr)) => self.navigator.goto(addr),
+            Some(Err(e)) => eprintln!("Invalid address: {}", e),
+            None => eprintln!("Address argument required"),
+        }
         true
     }
 
@@ -729,8 +804,13 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn field_next(&mut self, args: &[&str]) -> bool {
         let (current_page, total_pages) = self.field.get_page_info();
         if current_page != total_pages {
-            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
-            self.field.next_page(page.try_into().unwrap());
+            match args.get(0) {
+                Some(v) => match v.parse::<u32>() {
+                    Ok(p) => self.field.next_page(p.try_into().unwrap_or(1)),
+                    Err(_) => eprintln!("Invalid page number: {}", v),
+                },
+                None => self.field.next_page(1),
+            }
         }
         println!("{}", self.field.to_string(None));
         true
@@ -739,8 +819,13 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn field_prev(&mut self, args: &[&str]) -> bool {
         let (current_page, _) = self.field.get_page_info();
         if current_page != 1 {
-            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
-            self.field.prev_page(page.try_into().unwrap());
+            match args.get(0) {
+                Some(v) => match v.parse::<u32>() {
+                    Ok(p) => self.field.prev_page(p.try_into().unwrap_or(1)),
+                    Err(_) => eprintln!("Invalid page number: {}", v),
+                },
+                None => self.field.prev_page(1),
+            }
         }
         println!("{}", self.field.to_string(None));
         true
@@ -755,17 +840,36 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn field_move(&mut self, args: &[&str]) -> bool {
-        let from = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        let to = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        self.field.move_data(from, to);
+        let from_res = args
+            .get(0)
+            .ok_or("Missing from index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid from index"));
+        let to_res = args
+            .get(1)
+            .ok_or("Missing to index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
+        match (from_res, to_res) {
+            (Ok(from), Ok(to)) => self.field.move_data(from, to),
+            (Err(e), _) | (_, Err(e)) => eprintln!("Field move error: {}", e),
+        }
         println!("{}", self.field.to_string(None));
         true
     }
 
     fn field_remove(&mut self, args: &[&str]) -> bool {
-        let index = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
-        self.field.remove_data(index, count);
+        let index_res = args
+            .get(0)
+            .ok_or("Missing index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid index"));
+        let count_res = args
+            .get(1)
+            .unwrap_or(&"1")
+            .parse::<usize>()
+            .map_err(|_| "Invalid count");
+        match (index_res, count_res) {
+            (Ok(idx), Ok(count)) => self.field.remove_data(idx, count),
+            (Err(e), _) | (_, Err(e)) => eprintln!("Field remove error: {}", e),
+        }
         println!("{}", self.field.to_string(None));
         true
     }
@@ -775,14 +879,13 @@ impl<'a, 'b> Commander<'a, 'b> {
         println!("{}", self.field.to_string(None));
         true
     }
-    
+
     fn field_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
-        let filter = parse_filter_string(filter_arg)
-            .unwrap_or_else(|_| {
-                println!("Failed to parse filter string: {}", filter_arg);
-                return Vec::new();
-            });
+        let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
+            println!("Failed to parse filter string: {}", filter_arg);
+            return Vec::new();
+        });
         self.field.filter(filter);
         println!("{}", self.field.to_string(None));
         true
@@ -801,8 +904,13 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn lib_next(&mut self, args: &[&str]) -> bool {
         let (current_page, total_pages) = self.lib.get_page_info();
         if current_page != total_pages {
-            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
-            self.lib.next_page(page.try_into().unwrap());
+            match args.get(0) {
+                Some(v) => match v.parse::<u32>() {
+                    Ok(p) => self.lib.next_page(p.try_into().unwrap_or(1)),
+                    Err(_) => eprintln!("Invalid page number: {}", v),
+                },
+                None => self.lib.next_page(1),
+            }
         }
         println!("{}", self.lib.to_string(None));
         true
@@ -811,8 +919,13 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn lib_prev(&mut self, args: &[&str]) -> bool {
         let (current_page, _) = self.lib.get_page_info();
         if current_page != 1 {
-            let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(1);
-            self.lib.prev_page(page.try_into().unwrap());
+            match args.get(0) {
+                Some(v) => match v.parse::<u32>() {
+                    Ok(p) => self.lib.prev_page(p.try_into().unwrap_or(1)),
+                    Err(_) => eprintln!("Invalid page number: {}", v),
+                },
+                None => self.lib.prev_page(1),
+            }
         }
         println!("{}", self.lib.to_string(None));
         true
@@ -829,39 +942,83 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn lib_save(&mut self, args: &[&str]) -> bool {
         let datas = self.field.get_data_by_selection(args.get(0).unwrap_or(&""));
         if let Ok(datas) = datas {
-            self.lib.add_datas(datas.into_iter().map(|d| {
-                let mut d = d.clone();
-                match &mut d {
-                    VzData::Pointer(p) => {p.base.is_saved = true;},
-                    VzData::Module(m) => {m.base.is_saved = true;},
-                    VzData::Range(r) => {r.base.is_saved = true;},
-                    VzData::Function(f) => {f.base.is_saved = true;},
-                    VzData::Variable(v) => {v.base.is_saved = true;},
-                    VzData::JavaClass(c) => {c.base.is_saved = true;},
-                    VzData::JavaMethod(m) => {m.base.is_saved = true;},
-                    VzData::ObjCClass(c) => {c.base.is_saved = true;},
-                    VzData::ObjCMethod(m) => {m.base.is_saved = true;},
-                    VzData::Thread(t) => {t.base.is_saved = true;},
-                }
-                d
-            }).collect());
+            self.lib.add_datas(
+                datas
+                    .into_iter()
+                    .map(|d| {
+                        let mut d = d.clone();
+                        match &mut d {
+                            VzData::Pointer(p) => {
+                                p.base.is_saved = true;
+                            }
+                            VzData::Module(m) => {
+                                m.base.is_saved = true;
+                            }
+                            VzData::Range(r) => {
+                                r.base.is_saved = true;
+                            }
+                            VzData::Function(f) => {
+                                f.base.is_saved = true;
+                            }
+                            VzData::Variable(v) => {
+                                v.base.is_saved = true;
+                            }
+                            VzData::JavaClass(c) => {
+                                c.base.is_saved = true;
+                            }
+                            VzData::JavaMethod(m) => {
+                                m.base.is_saved = true;
+                            }
+                            VzData::ObjCClass(c) => {
+                                c.base.is_saved = true;
+                            }
+                            VzData::ObjCMethod(m) => {
+                                m.base.is_saved = true;
+                            }
+                            VzData::Thread(t) => {
+                                t.base.is_saved = true;
+                            }
+                        }
+                        d
+                    })
+                    .collect(),
+            );
         }
         println!("{}", self.lib.to_string(None));
         true
     }
 
     fn lib_move(&mut self, args: &[&str]) -> bool {
-        let from = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        let to = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        self.lib.move_data(from, to);
+        let from_res = args
+            .get(0)
+            .ok_or("Missing from index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid from index"));
+        let to_res = args
+            .get(1)
+            .ok_or("Missing to index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
+        match (from_res, to_res) {
+            (Ok(from), Ok(to)) => self.lib.move_data(from, to),
+            (Err(e), _) | (_, Err(e)) => eprintln!("Lib move error: {}", e),
+        }
         println!("{}", self.lib.to_string(None));
         true
     }
 
     fn lib_remove(&mut self, args: &[&str]) -> bool {
-        let index = args.get(0).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-        let count = args.get(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
-        self.lib.remove_data(index, count);
+        let index_res = args
+            .get(0)
+            .ok_or("Missing index")
+            .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid index"));
+        let count_res = args
+            .get(1)
+            .unwrap_or(&"1")
+            .parse::<usize>()
+            .map_err(|_| "Invalid count");
+        match (index_res, count_res) {
+            (Ok(idx), Ok(count)) => self.lib.remove_data(idx, count),
+            (Err(e), _) | (_, Err(e)) => eprintln!("Lib remove error: {}", e),
+        }
         println!("{}", self.lib.to_string(None));
         true
     }
@@ -874,11 +1031,10 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     fn lib_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
-        let filter = parse_filter_string(filter_arg)
-            .unwrap_or_else(|_| {
-                println!("Failed to parse filter string: {}", filter_arg);
-                return Vec::new();
-            });
+        let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
+            println!("Failed to parse filter string: {}", filter_arg);
+            return Vec::new();
+        });
         self.lib.filter(filter);
         println!("{}", self.lib.to_string(None));
         true
@@ -887,9 +1043,9 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn list_modules(&mut self, _args: &[&str]) -> bool {
         let filter = _args.get(0).map(|s| s.to_string());
         let modules = list_modules(&mut self.script, filter.as_deref())
-        .unwrap_or(vec![])
-        .into_iter()
-        .map(|m| VzData::Module(m))
+            .unwrap_or(vec![])
+            .into_iter()
+            .map(|m| VzData::Module(m))
             .collect::<Vec<_>>();
         self.field.clear_data();
         self.field.add_datas(modules);
@@ -901,9 +1057,9 @@ impl<'a, 'b> Commander<'a, 'b> {
         let protect = _args.get(0).map(|s| s.to_string());
         let filter = _args.get(1).map(|s| s.to_string());
         let ranges = list_ranges(&mut self.script, protect.as_deref(), filter.as_deref())
-        .unwrap_or(vec![])
-        .into_iter()
-        .map(|r| VzData::Range(r))
+            .unwrap_or(vec![])
+            .into_iter()
+            .map(|r| VzData::Range(r))
             .collect::<Vec<_>>();
         self.field.clear_data();
         self.field.add_datas(ranges);
@@ -927,29 +1083,27 @@ impl<'a, 'b> Commander<'a, 'b> {
                     eprintln!("Selected data is not a module");
                     return true;
                 }
-            },
-            Err(e) => { 
-                match self.navigator.get_data() {
-                    Some(vz_data_from_navigator) => {
-                        if let VzData::Module(m) = vz_data_from_navigator {
-                            filter = _args.get(0).map(|s| s.to_string());
-                            m.clone()
-                        } else {
-                            eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
-                            return true;
-                        }
-                    }
-                    None => {
-                        eprintln!("Selector error: {}. Navigator has no data.", e);
+            }
+            Err(e) => match self.navigator.get_data() {
+                Some(vz_data_from_navigator) => {
+                    if let VzData::Module(m) = vz_data_from_navigator {
+                        filter = _args.get(0).map(|s| s.to_string());
+                        m.clone()
+                    } else {
+                        eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
                         return true;
                     }
+                }
+                None => {
+                    eprintln!("Selector error: {}. Navigator has no data.", e);
+                    return true;
                 }
             },
         };
         let functions = list_functions(&mut self.script, module, filter.as_deref())
-        .unwrap_or(vec![])
-        .into_iter()
-        .map(|f| VzData::Function(f))
+            .unwrap_or(vec![])
+            .into_iter()
+            .map(|f| VzData::Function(f))
             .collect::<Vec<_>>();
         self.field.clear_data();
         self.field.add_datas(functions);
@@ -973,29 +1127,27 @@ impl<'a, 'b> Commander<'a, 'b> {
                     eprintln!("Selected data is not a module");
                     return true;
                 }
-            },
-            Err(e) => { 
-                match self.navigator.get_data() {
-                    Some(vz_data_from_navigator) => {
-                        if let VzData::Module(m) = vz_data_from_navigator {
-                            filter = _args.get(0).map(|s| s.to_string());
-                            m.clone()
-                        } else {
-                            eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
-                            return true;
-                        }
-                    }
-                    None => {
-                        eprintln!("Selector error: {}. Navigator has no data.", e);
+            }
+            Err(e) => match self.navigator.get_data() {
+                Some(vz_data_from_navigator) => {
+                    if let VzData::Module(m) = vz_data_from_navigator {
+                        filter = _args.get(0).map(|s| s.to_string());
+                        m.clone()
+                    } else {
+                        eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
                         return true;
                     }
+                }
+                None => {
+                    eprintln!("Selector error: {}. Navigator has no data.", e);
+                    return true;
                 }
             },
         };
         let variables = list_variables(&mut self.script, module, filter.as_deref())
-        .unwrap_or(vec![])
-        .into_iter()
-        .map(|v| VzData::Variable(v))
+            .unwrap_or(vec![])
+            .into_iter()
+            .map(|v| VzData::Variable(v))
             .collect::<Vec<_>>();
         self.field.clear_data();
         self.field.add_datas(variables);
@@ -1009,8 +1161,10 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn debug_exports(&mut self, _args: &[&str]) -> bool {
-        let exports = self.script.list_exports().unwrap();
-        println!("{:?}", &exports);
+        match self.script.list_exports() {
+            Ok(exports) => println!("{:?}", &exports),
+            Err(e) => eprintln!("Failed to list exports: {}", e),
+        }
         true
     }
 }
