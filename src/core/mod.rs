@@ -6,7 +6,7 @@ mod ps;
 
 use crate::{gum::attach, util::{lengthed, highlight}};
 use actions::get_device;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
 use crossterm::style::Stylize;
 use manager::Manager;
@@ -14,8 +14,23 @@ use std::{process::exit};
 
 pub fn execute_cli() {
     let cliparser = Cli::parse();
+    // Handle completion generation if requested
+    if let Some(shell) = cliparser.generate_completion {
+        if let Err(e) = cliparser.generate_completion() {
+            eprintln!("Failed to generate completion: {}", e);
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
+
     let _manager = Manager::new();
     match &cliparser.command {
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let bin_name = "vlitz".to_string();
+            clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
+            std::process::exit(0);
+        },
         Commands::Attach(args) => {
             let device_opt = get_device(&_manager, &args.connection);
             if let Some(mut device) = device_opt {

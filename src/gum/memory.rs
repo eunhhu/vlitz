@@ -89,14 +89,6 @@ pub fn readbytes(script: &mut Script, addr: u64, len: usize) -> Result<Vec<u8>, 
     Ok(binding.as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u8).collect())
 }
 
-pub fn readinstruction(script: &mut Script, addr: u64) -> Result<String, String> {
-    let data = script.exports
-        .call("instruction", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.unwrap();
-    Ok(binding.as_str().unwrap().to_string())
-}
-
 pub fn writebyte(script: &mut Script, addr: u64, value: u8) -> Result<(), String> {
     script.exports
         .call("writer_byte", Some(json!([addr, value])))

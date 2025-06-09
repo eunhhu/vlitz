@@ -1,10 +1,28 @@
-use clap::{Parser, Subcommand, Args, ValueEnum};
+use clap::{Parser, Subcommand, Args, ValueEnum, CommandFactory};
+use clap_complete::{generate, Shell};
+use std::io;
 
 #[derive(Parser)]
 #[clap(name = "vlitz", version, about = "A strong dynamic debugger CLI tool based on frida", long_about = None)]
 pub struct Cli {
     #[clap(subcommand)]
     pub command: Commands,
+
+    #[clap(long, value_enum, hide = true)]
+    pub generate_completion: Option<Shell>,
+}
+
+impl Cli {
+    pub fn generate_completion(&self) -> std::io::Result<()> {
+        if let Some(shell) = self.generate_completion {
+            let mut cmd = Cli::command();
+            let bin_name = "vlitz".to_string();
+            generate(shell, &mut cmd, &bin_name, &mut io::stdout());
+            Ok(())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Args, Debug)]
@@ -112,9 +130,16 @@ pub struct KillArgs {
 }
 
 #[derive(Subcommand)]
-pub enum Commands{
-    Attach (AttachArgs),
-    Ps (PsArgs),
-    Kill (KillArgs),
+pub enum Commands {
+    /// Generate shell completion script
+    #[command(name = "completions")]
+    Completions {
+        /// The shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    Attach(AttachArgs),
+    Ps(PsArgs),
+    Kill(KillArgs),
     Devices,
 }
