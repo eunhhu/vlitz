@@ -73,19 +73,28 @@ impl Store {
         self.data.extend(datas);
     }
 
-    pub fn remove_data(&mut self, index: usize, count: usize) {
-        if index < self.data.len() {
-            let end = (index + count).min(self.data.len());
-            self.data.drain(index..end);
-            self.adjust_cursor();
+    pub fn remove_data(&mut self, index: usize, count: usize) -> Result<(), String> {
+        if index >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if index + count > self.data.len() {
+            return Err("Range exceeds data length".to_string());
+        }
+        self.data.drain(index..index + count);
+        self.adjust_cursor();
+        Ok(())
     }
 
-    pub fn move_data(&mut self, from: usize, to: usize) {
-        if from < self.data.len() {
-            let data = self.data.remove(from);
-            self.data.insert(to.min(self.data.len()), data);
+    pub fn move_data(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if from >= self.data.len() || to >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if from == to {
+            return Ok(());
+        }
+        let data = self.data.remove(from);
+        self.data.insert(to, data);
+        Ok(())
     }
 
     pub fn clear_data(&mut self) {
@@ -217,15 +226,38 @@ impl Store {
                 let ranges: Vec<_> = s.split('-').map(|s| s.trim()).collect();
                 if ranges.len() > 2 {
                     return Err(format!("Invalid range: {}", s));
+                }
+
+                let start_str = ranges
+                    .get(0)
+                    .ok_or_else(|| format!("Invalid range: {}", s))?;
+                let end_str = if ranges.len() == 2 {
+                    ranges.get(1).unwrap_or(start_str)
                 } else {
-                    let start = ranges.get(0).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
-                    let end = ranges.get(1).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
-                    if start > end {
-                        return Err(format!("Invalid range: {}", s));
-                    }
-                    for i in start..=end {
-                        indices.insert(i);
-                    }
+                    start_str
+                };
+
+                let start = if start_str.is_empty() {
+                    0
+                } else {
+                    start_str
+                        .parse::<usize>()
+                        .map_err(|_| format!("Invalid number in range: {}", start_str))?
+                };
+                let end = if end_str.is_empty() {
+                    start
+                } else {
+                    end_str
+                        .parse::<usize>()
+                        .map_err(|_| format!("Invalid number in range: {}", end_str))?
+                };
+
+                if start > end {
+                    return Err(format!("Invalid range: {}", s));
+                }
+
+                for i in start..=end {
+                    indices.insert(i);
                 }
             }
         }
@@ -484,7 +516,7 @@ impl Store {
         let data = match self.get_data_by_page(page.unwrap_or(current_page)) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("Page error: {}", e);
+                crate::util::logger::error(&format!("Page error: {}", e));
                 Vec::new()
             }
         };

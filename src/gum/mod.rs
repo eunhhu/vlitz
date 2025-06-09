@@ -145,10 +145,10 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
 
     if !session.is_detached() {
         if let Err(e) = script.unload() {
-            eprintln!("Failed to unload script: {}", e);
+            crate::util::logger::error(&format!("Failed to unload script: {}", e));
         }
         if let Err(e) = session.detach() {
-            eprintln!("Failed to detach session: {}", e);
+            crate::util::logger::error(&format!("Failed to detach session: {}", e));
         } else {
             println!("{}", "Session detached.".yellow().bold());
         }

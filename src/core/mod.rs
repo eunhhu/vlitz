@@ -20,7 +20,7 @@ pub fn execute_cli() {
     // Handle completion generation if requested
     if let Some(shell) = cliparser.generate_completion {
         if let Err(e) = cliparser.generate_completion() {
-            eprintln!("Failed to generate completion: {}", e);
+            crate::util::logger::error(&format!("Failed to generate completion: {}", e));
             std::process::exit(1);
         }
         std::process::exit(0);

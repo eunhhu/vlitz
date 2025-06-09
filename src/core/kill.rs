@@ -35,7 +35,9 @@ pub fn kill(device: &mut Device, args: &ProcessArgs) -> Vec<(String, u32)> {
     for (name, pid) in filtered_processes {
         match device.kill(pid) {
             Ok(_) => killed_processes.push((name, pid)),
-            Err(e) => eprintln!("Failed to kill {} (pid {}): {}", name, pid, e),
+            Err(e) => {
+                crate::util::logger::error(&format!("Failed to kill {} (pid {}): {}", name, pid, e))
+            }
         }
     }
 
