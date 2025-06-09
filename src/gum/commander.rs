@@ -4,6 +4,7 @@ use crate::gum::{
     list::{list_functions, list_ranges, list_variables},
 };
 use crossterm::style::Stylize;
+use crate::util::logger;
 
 use super::{list::list_modules, navigator::Navigator, store::Store, vzdata::VzData};
 use frida::Script;
@@ -764,11 +765,16 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
     }
 
+    fn parse_usize(s: &str) -> Result<usize, String> {
+        s.parse::<usize>()
+            .map_err(|_| format!("Invalid number: {}", s))
+    }
+
     fn add(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(offset)) => self.navigator.add(offset),
-            Some(Err(e)) => eprintln!("Invalid offset: {}", e),
-            None => eprintln!("Offset argument required"),
+            Some(Err(e)) => logger::error(&format!("Invalid offset: {}", e)),
+            None => logger::error("Offset argument required"),
         }
         true
     }
@@ -776,8 +782,8 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn sub(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(offset)) => self.navigator.sub(offset),
-            Some(Err(e)) => eprintln!("Invalid offset: {}", e),
-            None => eprintln!("Offset argument required"),
+            Some(Err(e)) => logger::error(&format!("Invalid offset: {}", e)),
+            None => logger::error("Offset argument required"),
         }
         true
     }
@@ -785,18 +791,19 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn goto(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(addr)) => self.navigator.goto(addr),
-            Some(Err(e)) => eprintln!("Invalid address: {}", e),
-            None => eprintln!("Address argument required"),
+            Some(Err(e)) => logger::error(&format!("Invalid address: {}", e)),
+            None => logger::error("Address argument required"),
         }
         true
     }
 
     fn field_list(&mut self, args: &[&str]) -> bool {
-        let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-        if let Some(page_num) = page.checked_sub(1) {
-            println!("{}", self.field.to_string(Some(page_num as usize)));
-        } else {
-            println!("{}", self.field.to_string(None));
+        match args.get(0) {
+            Some(v) => match Self::parse_usize(v) {
+                Ok(p) => println!("{}", self.field.to_string(Some(p.saturating_sub(1)))),
+                Err(e) => logger::error(&e),
+            },
+            None => println!("{}", self.field.to_string(None)),
         }
         true
     }
@@ -805,9 +812,9 @@ impl<'a, 'b> Commander<'a, 'b> {
         let (current_page, total_pages) = self.field.get_page_info();
         if current_page != total_pages {
             match args.get(0) {
-                Some(v) => match v.parse::<u32>() {
-                    Ok(p) => self.field.next_page(p.try_into().unwrap_or(1)),
-                    Err(_) => eprintln!("Invalid page number: {}", v),
+                Some(v) => match Self::parse_usize(v) {
+                    Ok(p) => self.field.next_page(p.max(1)),
+                    Err(e) => logger::error(&e),
                 },
                 None => self.field.next_page(1),
             }
@@ -820,9 +827,9 @@ impl<'a, 'b> Commander<'a, 'b> {
         let (current_page, _) = self.field.get_page_info();
         if current_page != 1 {
             match args.get(0) {
-                Some(v) => match v.parse::<u32>() {
-                    Ok(p) => self.field.prev_page(p.try_into().unwrap_or(1)),
-                    Err(_) => eprintln!("Invalid page number: {}", v),
+                Some(v) => match Self::parse_usize(v) {
+                    Ok(p) => self.field.prev_page(p.max(1)),
+                    Err(e) => logger::error(&e),
                 },
                 None => self.field.prev_page(1),
             }
@@ -850,7 +857,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
         match (from_res, to_res) {
             (Ok(from), Ok(to)) => self.field.move_data(from, to),
-            (Err(e), _) | (_, Err(e)) => eprintln!("Field move error: {}", e),
+            (Err(e), _) | (_, Err(e)) => logger::error(&format!("Field move error: {}", e)),
         }
         println!("{}", self.field.to_string(None));
         true
@@ -868,7 +875,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             .map_err(|_| "Invalid count");
         match (index_res, count_res) {
             (Ok(idx), Ok(count)) => self.field.remove_data(idx, count),
-            (Err(e), _) | (_, Err(e)) => eprintln!("Field remove error: {}", e),
+            (Err(e), _) | (_, Err(e)) => logger::error(&format!("Field remove error: {}", e)),
         }
         println!("{}", self.field.to_string(None));
         true
@@ -883,8 +890,8 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn field_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
         let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
-            println!("Failed to parse filter string: {}", filter_arg);
-            return Vec::new();
+            logger::error(&format!("Failed to parse filter string: {}", filter_arg));
+            Vec::new()
         });
         self.field.filter(filter);
         println!("{}", self.field.to_string(None));
@@ -892,11 +899,12 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn lib_list(&mut self, args: &[&str]) -> bool {
-        let page = args.get(0).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-        if let Some(page_num) = page.checked_sub(1) {
-            println!("{}", self.lib.to_string(Some(page_num as usize)));
-        } else {
-            println!("{}", self.lib.to_string(None));
+        match args.get(0) {
+            Some(v) => match Self::parse_usize(v) {
+                Ok(p) => println!("{}", self.lib.to_string(Some(p.saturating_sub(1)))),
+                Err(e) => logger::error(&e),
+            },
+            None => println!("{}", self.lib.to_string(None)),
         }
         true
     }
@@ -905,9 +913,9 @@ impl<'a, 'b> Commander<'a, 'b> {
         let (current_page, total_pages) = self.lib.get_page_info();
         if current_page != total_pages {
             match args.get(0) {
-                Some(v) => match v.parse::<u32>() {
-                    Ok(p) => self.lib.next_page(p.try_into().unwrap_or(1)),
-                    Err(_) => eprintln!("Invalid page number: {}", v),
+                Some(v) => match Self::parse_usize(v) {
+                    Ok(p) => self.lib.next_page(p.max(1)),
+                    Err(e) => logger::error(&e),
                 },
                 None => self.lib.next_page(1),
             }
@@ -920,9 +928,9 @@ impl<'a, 'b> Commander<'a, 'b> {
         let (current_page, _) = self.lib.get_page_info();
         if current_page != 1 {
             match args.get(0) {
-                Some(v) => match v.parse::<u32>() {
-                    Ok(p) => self.lib.prev_page(p.try_into().unwrap_or(1)),
-                    Err(_) => eprintln!("Invalid page number: {}", v),
+                Some(v) => match Self::parse_usize(v) {
+                    Ok(p) => self.lib.prev_page(p.max(1)),
+                    Err(e) => logger::error(&e),
                 },
                 None => self.lib.prev_page(1),
             }
@@ -940,8 +948,15 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn lib_save(&mut self, args: &[&str]) -> bool {
-        let datas = self.field.get_data_by_selection(args.get(0).unwrap_or(&""));
-        if let Ok(datas) = datas {
+        let datas_res = if let Some(sel) = args.get(0) {
+            self.field.get_data_by_selection(sel)
+        } else {
+            match self.navigator.get_data() {
+                Some(d) => Ok(vec![d]),
+                None => Err("No selector provided and navigator is empty".to_string()),
+            }
+        };
+        if let Ok(datas) = datas_res {
             self.lib.add_datas(
                 datas
                     .into_iter()
@@ -999,7 +1014,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
         match (from_res, to_res) {
             (Ok(from), Ok(to)) => self.lib.move_data(from, to),
-            (Err(e), _) | (_, Err(e)) => eprintln!("Lib move error: {}", e),
+            (Err(e), _) | (_, Err(e)) => logger::error(&format!("Lib move error: {}", e)),
         }
         println!("{}", self.lib.to_string(None));
         true
@@ -1017,7 +1032,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             .map_err(|_| "Invalid count");
         match (index_res, count_res) {
             (Ok(idx), Ok(count)) => self.lib.remove_data(idx, count),
-            (Err(e), _) | (_, Err(e)) => eprintln!("Lib remove error: {}", e),
+            (Err(e), _) | (_, Err(e)) => logger::error(&format!("Lib remove error: {}", e)),
         }
         println!("{}", self.lib.to_string(None));
         true
@@ -1032,8 +1047,8 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn lib_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
         let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
-            println!("Failed to parse filter string: {}", filter_arg);
-            return Vec::new();
+            logger::error(&format!("Failed to parse filter string: {}", filter_arg));
+            Vec::new()
         });
         self.lib.filter(filter);
         println!("{}", self.lib.to_string(None));
@@ -1074,13 +1089,13 @@ impl<'a, 'b> Commander<'a, 'b> {
         let module = match res {
             Ok(data) => {
                 if data.is_empty() {
-                    eprintln!("No data selected");
+                    logger::error("No data selected");
                     return true;
                 } else if let Some(VzData::Module(m)) = data.first() {
                     filter = _args.get(1).map(|s| s.to_string());
                     m.clone()
                 } else {
-                    eprintln!("Selected data is not a module");
+                    logger::error("Selected data is not a module");
                     return true;
                 }
             }
@@ -1090,12 +1105,12 @@ impl<'a, 'b> Commander<'a, 'b> {
                         filter = _args.get(0).map(|s| s.to_string());
                         m.clone()
                     } else {
-                        eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
+                        logger::error(&format!("Selector error: {}. Navigator data is not a VzModule.", e));
                         return true;
                     }
                 }
                 None => {
-                    eprintln!("Selector error: {}. Navigator has no data.", e);
+                    logger::error(&format!("Selector error: {}. Navigator has no data.", e));
                     return true;
                 }
             },
@@ -1118,13 +1133,13 @@ impl<'a, 'b> Commander<'a, 'b> {
         let module = match res {
             Ok(data) => {
                 if data.is_empty() {
-                    eprintln!("No data selected");
+                    logger::error("No data selected");
                     return true;
                 } else if let Some(VzData::Module(m)) = data.first() {
                     filter = _args.get(1).map(|s| s.to_string());
                     m.clone()
                 } else {
-                    eprintln!("Selected data is not a module");
+                    logger::error("Selected data is not a module");
                     return true;
                 }
             }
@@ -1134,12 +1149,12 @@ impl<'a, 'b> Commander<'a, 'b> {
                         filter = _args.get(0).map(|s| s.to_string());
                         m.clone()
                     } else {
-                        eprintln!("Selector error: {}. Navigator data is not a VzModule.", e);
+                        logger::error(&format!("Selector error: {}. Navigator data is not a VzModule.", e));
                         return true;
                     }
                 }
                 None => {
-                    eprintln!("Selector error: {}. Navigator has no data.", e);
+                    logger::error(&format!("Selector error: {}. Navigator has no data.", e));
                     return true;
                 }
             },
@@ -1163,7 +1178,7 @@ impl<'a, 'b> Commander<'a, 'b> {
     fn debug_exports(&mut self, _args: &[&str]) -> bool {
         match self.script.list_exports() {
             Ok(exports) => println!("{:?}", &exports),
-            Err(e) => eprintln!("Failed to list exports: {}", e),
+            Err(e) => logger::error(&format!("Failed to list exports: {}", e)),
         }
         true
     }
