@@ -3,6 +3,7 @@ use crate::gum::{
     filter::parse_filter_string,
     list::{list_functions, list_ranges, list_variables},
 };
+use crate::util::logger;
 use crossterm::style::Stylize;
 use crate::util::logger;
 
@@ -856,7 +857,11 @@ impl<'a, 'b> Commander<'a, 'b> {
             .ok_or("Missing to index")
             .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
         match (from_res, to_res) {
-            (Ok(from), Ok(to)) => self.field.move_data(from, to),
+            (Ok(from), Ok(to)) => {
+                if let Err(e) = self.field.move_data(from, to) {
+                    logger::error(&format!("Field move error: {}", e));
+                }
+            }
             (Err(e), _) | (_, Err(e)) => logger::error(&format!("Field move error: {}", e)),
         }
         println!("{}", self.field.to_string(None));
@@ -874,7 +879,11 @@ impl<'a, 'b> Commander<'a, 'b> {
             .parse::<usize>()
             .map_err(|_| "Invalid count");
         match (index_res, count_res) {
-            (Ok(idx), Ok(count)) => self.field.remove_data(idx, count),
+            (Ok(idx), Ok(count)) => {
+                if let Err(e) = self.field.remove_data(idx, count) {
+                    logger::error(&format!("Field remove error: {}", e));
+                }
+            }
             (Err(e), _) | (_, Err(e)) => logger::error(&format!("Field remove error: {}", e)),
         }
         println!("{}", self.field.to_string(None));
@@ -956,48 +965,52 @@ impl<'a, 'b> Commander<'a, 'b> {
                 None => Err("No selector provided and navigator is empty".to_string()),
             }
         };
-        if let Ok(datas) = datas_res {
-            self.lib.add_datas(
-                datas
-                    .into_iter()
-                    .map(|d| {
-                        let mut d = d.clone();
-                        match &mut d {
-                            VzData::Pointer(p) => {
-                                p.base.is_saved = true;
+        match datas_res {
+            Ok(datas) if !datas.is_empty() => {
+                self.lib.add_datas(
+                    datas
+                        .into_iter()
+                        .map(|d| {
+                            let mut d = d.clone();
+                            match &mut d {
+                                VzData::Pointer(p) => {
+                                    p.base.is_saved = true;
+                                }
+                                VzData::Module(m) => {
+                                    m.base.is_saved = true;
+                                }
+                                VzData::Range(r) => {
+                                    r.base.is_saved = true;
+                                }
+                                VzData::Function(f) => {
+                                    f.base.is_saved = true;
+                                }
+                                VzData::Variable(v) => {
+                                    v.base.is_saved = true;
+                                }
+                                VzData::JavaClass(c) => {
+                                    c.base.is_saved = true;
+                                }
+                                VzData::JavaMethod(m) => {
+                                    m.base.is_saved = true;
+                                }
+                                VzData::ObjCClass(c) => {
+                                    c.base.is_saved = true;
+                                }
+                                VzData::ObjCMethod(m) => {
+                                    m.base.is_saved = true;
+                                }
+                                VzData::Thread(t) => {
+                                    t.base.is_saved = true;
+                                }
                             }
-                            VzData::Module(m) => {
-                                m.base.is_saved = true;
-                            }
-                            VzData::Range(r) => {
-                                r.base.is_saved = true;
-                            }
-                            VzData::Function(f) => {
-                                f.base.is_saved = true;
-                            }
-                            VzData::Variable(v) => {
-                                v.base.is_saved = true;
-                            }
-                            VzData::JavaClass(c) => {
-                                c.base.is_saved = true;
-                            }
-                            VzData::JavaMethod(m) => {
-                                m.base.is_saved = true;
-                            }
-                            VzData::ObjCClass(c) => {
-                                c.base.is_saved = true;
-                            }
-                            VzData::ObjCMethod(m) => {
-                                m.base.is_saved = true;
-                            }
-                            VzData::Thread(t) => {
-                                t.base.is_saved = true;
-                            }
-                        }
-                        d
-                    })
-                    .collect(),
-            );
+                            d
+                        })
+                        .collect(),
+                );
+            }
+            Ok(_) => logger::error("No data selected"),
+            Err(e) => logger::error(&format!("Selection error: {}", e)),
         }
         println!("{}", self.lib.to_string(None));
         true
@@ -1013,7 +1026,11 @@ impl<'a, 'b> Commander<'a, 'b> {
             .ok_or("Missing to index")
             .and_then(|v| v.parse::<usize>().map_err(|_| "Invalid to index"));
         match (from_res, to_res) {
-            (Ok(from), Ok(to)) => self.lib.move_data(from, to),
+            (Ok(from), Ok(to)) => {
+                if let Err(e) = self.lib.move_data(from, to) {
+                    logger::error(&format!("Lib move error: {}", e));
+                }
+            }
             (Err(e), _) | (_, Err(e)) => logger::error(&format!("Lib move error: {}", e)),
         }
         println!("{}", self.lib.to_string(None));
@@ -1031,7 +1048,11 @@ impl<'a, 'b> Commander<'a, 'b> {
             .parse::<usize>()
             .map_err(|_| "Invalid count");
         match (index_res, count_res) {
-            (Ok(idx), Ok(count)) => self.lib.remove_data(idx, count),
+            (Ok(idx), Ok(count)) => {
+                if let Err(e) = self.lib.remove_data(idx, count) {
+                    logger::error(&format!("Lib remove error: {}", e));
+                }
+            }
             (Err(e), _) | (_, Err(e)) => logger::error(&format!("Lib remove error: {}", e)),
         }
         println!("{}", self.lib.to_string(None));
@@ -1105,7 +1126,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         filter = _args.get(0).map(|s| s.to_string());
                         m.clone()
                     } else {
-                        logger::error(&format!("Selector error: {}. Navigator data is not a VzModule.", e));
+                        logger::error(&format!(
+                            "Selector error: {}. Navigator data is not a VzModule.",
+                            e
+                        ));
                         return true;
                     }
                 }
@@ -1149,7 +1173,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         filter = _args.get(0).map(|s| s.to_string());
                         m.clone()
                     } else {
-                        logger::error(&format!("Selector error: {}. Navigator data is not a VzModule.", e));
+                        logger::error(&format!(
+                            "Selector error: {}. Navigator data is not a VzModule.",
+                            e
+                        ));
                         return true;
                     }
                 }

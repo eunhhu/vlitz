@@ -73,19 +73,28 @@ impl Store {
         self.data.extend(datas);
     }
 
-    pub fn remove_data(&mut self, index: usize, count: usize) {
-        if index < self.data.len() {
-            let end = (index + count).min(self.data.len());
-            self.data.drain(index..end);
-            self.adjust_cursor();
+    pub fn remove_data(&mut self, index: usize, count: usize) -> Result<(), String> {
+        if index >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if index + count > self.data.len() {
+            return Err("Range exceeds data length".to_string());
+        }
+        self.data.drain(index..index + count);
+        self.adjust_cursor();
+        Ok(())
     }
 
-    pub fn move_data(&mut self, from: usize, to: usize) {
-        if from < self.data.len() {
-            let data = self.data.remove(from);
-            self.data.insert(to.min(self.data.len()), data);
+    pub fn move_data(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if from >= self.data.len() || to >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if from == to {
+            return Ok(());
+        }
+        let data = self.data.remove(from);
+        self.data.insert(to, data);
+        Ok(())
     }
 
     pub fn clear_data(&mut self) {
@@ -219,8 +228,14 @@ impl Store {
                     return Err(format!("Invalid range: {}", s));
                 }
 
-                let start_str = ranges.get(0).ok_or_else(|| format!("Invalid range: {}", s))?;
-                let end_str = if ranges.len() == 2 { ranges.get(1).unwrap_or(start_str) } else { start_str };
+                let start_str = ranges
+                    .get(0)
+                    .ok_or_else(|| format!("Invalid range: {}", s))?;
+                let end_str = if ranges.len() == 2 {
+                    ranges.get(1).unwrap_or(start_str)
+                } else {
+                    start_str
+                };
 
                 let start = if start_str.is_empty() {
                     0
