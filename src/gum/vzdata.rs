@@ -41,19 +41,32 @@ pub struct VzBase {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VzValueType {
-    Byte, Int8,
-    UByte, UInt8,
-    Short, Int16,
-    UShort, UInt16,
-    Int, Int32,
-    UInt, UInt32,
-    Long, Int64,
-    ULong, UInt64,
-    Float, Float32,
-    Double, Float64,
-    Bool, Boolean,
-    String, Utf8,
-    Array, Bytes,
+    Byte,
+    Int8,
+    UByte,
+    UInt8,
+    Short,
+    Int16,
+    UShort,
+    UInt16,
+    Int,
+    Int32,
+    UInt,
+    UInt32,
+    Long,
+    Int64,
+    ULong,
+    UInt64,
+    Float,
+    Float32,
+    Double,
+    Float64,
+    Bool,
+    Boolean,
+    String,
+    Utf8,
+    Array,
+    Bytes,
     Pointer,
     Void,
 }
@@ -121,7 +134,9 @@ pub struct VzPointer {
 
 impl fmt::Display for VzPointer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {} {}",
+        write!(
+            f,
+            "{} {} {} {}",
             format!("[{}]", self.base.data_type).blue(),
             format!("{:#x}", self.address).yellow(),
             format!("({:#x})", self.size).dark_grey(),
@@ -140,9 +155,15 @@ pub struct VzModule {
 
 impl fmt::Display for VzModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}",
+        write!(
+            f,
+            "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
+            format!(
+                "{} @ {}",
+                self.name,
+                format!("{:#x}", self.address).yellow()
+            ),
             format!("({:#x})", self.size).dark_grey()
         )
     }
@@ -171,9 +192,15 @@ pub struct VzRange {
 
 impl fmt::Display for VzRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {} {}",
+        write!(
+            f,
+            "{} {} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{:#x} - {:#x}", self.address, self.address + self.size as u64),
+            format!(
+                "{:#x} - {:#x}",
+                self.address,
+                self.address + self.size as u64
+            ),
             format!("({:#x})", self.size).dark_grey(),
             format!("[{}]", self.protection).yellow()
         )
@@ -203,9 +230,15 @@ pub struct VzFunction {
 
 impl fmt::Display for VzFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}",
+        write!(
+            f,
+            "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
+            format!(
+                "{} @ {}",
+                self.name,
+                format!("{:#x}", self.address).yellow()
+            ),
             format!("({})", self.module).yellow()
         )
     }
@@ -234,9 +267,15 @@ pub struct VzVariable {
 
 impl fmt::Display for VzVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}",
+        write!(
+            f,
+            "{} {} {}",
             format!("[{}]", self.base.data_type).blue(),
-            format!("{} @ {}", self.name, format!("{:#x}", self.address).yellow()),
+            format!(
+                "{} @ {}",
+                self.name,
+                format!("{:#x}", self.address).yellow()
+            ),
             format!("({})", self.module).yellow()
         )
     }
@@ -263,7 +302,9 @@ pub struct VzJavaClass {
 
 impl fmt::Display for VzJavaClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}",
+        write!(
+            f,
+            "{} {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name
         )
@@ -281,7 +322,9 @@ pub struct VzJavaMethod {
 
 impl fmt::Display for VzJavaMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}{} -> {} @ {}",
+        write!(
+            f,
+            "{} {}{} -> {} @ {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name,
             format!("({})", self.args.join(", ")).yellow(),
@@ -299,7 +342,9 @@ pub struct VzObjCClass {
 
 impl fmt::Display for VzObjCClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}",
+        write!(
+            f,
+            "{} {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name
         )
@@ -315,7 +360,9 @@ pub struct VzObjCMethod {
 
 impl fmt::Display for VzObjCMethod {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} @ {}",
+        write!(
+            f,
+            "{} {} @ {}",
             format!("[{}]", self.base.data_type).blue(),
             self.name,
             format!("({})", self.class).yellow()
@@ -331,7 +378,9 @@ pub struct VzThread {
 
 impl fmt::Display for VzThread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}",
+        write!(
+            f,
+            "{} {}",
             format!("[{}]", self.base.data_type).blue(),
             self.id,
         )
@@ -340,5 +389,5 @@ impl fmt::Display for VzThread {
 
 pub fn string_to_u64(s: &str) -> u64 {
     let s = s.trim_start_matches("0x");
-    u64::from_str_radix(s, 16).unwrap()
+    u64::from_str_radix(s, 16).unwrap_or(0)
 }
