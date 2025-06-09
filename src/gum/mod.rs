@@ -2,13 +2,13 @@
 mod handler;
 mod session;
 
-pub mod vzdata;
-pub mod store;
 pub mod commander;
-pub mod navigator;
-pub mod list;
 pub mod filter;
+pub mod list;
 pub mod memory;
+pub mod navigator;
+pub mod store;
+pub mod vzdata;
 
 use std::process::exit;
 
@@ -19,10 +19,18 @@ use handler::Handler;
 use session::session_manager;
 
 fn attach_pid<'a>(device: &'a Device, pid: u32) -> (frida::Session<'a>, u32) {
-    (device.attach(pid).unwrap_or_else(|e| {
-        println!("{} {} ({})", "Failed to attach process:".red(), pid.to_string().yellow(), e);
-        exit(0);
-    }), pid)
+    (
+        device.attach(pid).unwrap_or_else(|e| {
+            println!(
+                "{} {} ({})",
+                "Failed to attach process:".red(),
+                pid.to_string().yellow(),
+                e
+            );
+            exit(0);
+        }),
+        pid,
+    )
 }
 
 pub fn attach(device: &mut Device, args: &TargetArgs) {
@@ -33,7 +41,11 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .find(|p| p.get_pid() == _pid)
             .map(|p| p.get_pid())
             .unwrap_or_else(|| {
-                println!("{} {}", "Process not found:".red(), _pid.to_string().yellow());
+                println!(
+                    "{} {}",
+                    "Process not found:".red(),
+                    _pid.to_string().yellow()
+                );
                 exit(0);
             });
         attach_pid(device, pid)
@@ -41,7 +53,12 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
         let pid = device
             .spawn(file, &frida::SpawnOptions::new())
             .unwrap_or_else(|e| {
-                println!("{} {} ({})", "Failed to spawn process:".red(), file.to_string().yellow(), e);
+                println!(
+                    "{} {} ({})",
+                    "Failed to spawn process:".red(),
+                    file.to_string().yellow(),
+                    e
+                );
                 exit(0);
             });
         attach_pid(device, pid)
@@ -52,7 +69,11 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
             .unwrap_or_else(|| {
-                println!("{} {}", "Process not found:".red(), name.to_string().yellow());
+                println!(
+                    "{} {}",
+                    "Process not found:".red(),
+                    name.to_string().yellow()
+                );
                 exit(0);
             });
         attach_pid(device, pid)
@@ -63,7 +84,11 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
             .unwrap_or_else(|| {
-                println!("{} {}", "Process not found:".red(), name.to_string().yellow());
+                println!(
+                    "{} {}",
+                    "Process not found:".red(),
+                    name.to_string().yellow()
+                );
                 exit(0);
             });
         attach_pid(device, pid)
@@ -74,7 +99,11 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
             .find(|p| p.get_name().to_lowercase() == name.to_lowercase())
             .map(|p| p.get_pid())
             .unwrap_or_else(|| {
-                println!("{} {}", "Process not found:".red(), name.to_string().yellow());
+                println!(
+                    "{} {}",
+                    "Process not found:".red(),
+                    name.to_string().yellow()
+                );
                 exit(0);
             });
         attach_pid(device, pid)
@@ -115,8 +144,13 @@ pub fn attach(device: &mut Device, args: &TargetArgs) {
     session_manager(&session, &mut script, pid);
 
     if !session.is_detached() {
-        script.unload().unwrap();
-        session.detach().unwrap();
-        println!("{}", "Session detached.".yellow().bold());
+        if let Err(e) = script.unload() {
+            crate::util::logger::error(&format!("Failed to unload script: {}", e));
+        }
+        if let Err(e) = session.detach() {
+            crate::util::logger::error(&format!("Failed to detach session: {}", e));
+        } else {
+            println!("{}", "Session detached.".yellow().bold());
+        }
     }
 }

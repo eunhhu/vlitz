@@ -1,9 +1,12 @@
 // src/gum/store.rs
 
+use super::{
+    filter::{FilterOperator, FilterSegment, FilterValue, LogicalOperator},
+    vzdata::{VzData, VzDataType},
+};
 use crate::util::lengthed;
-use super::{filter::{FilterSegment, FilterValue, FilterOperator, LogicalOperator}, vzdata::{VzData, VzDataType}};
-use std::fmt::Debug; // Required for format!("{:?}") on VzDataType
 use crossterm::style::Stylize;
+use std::fmt::Debug; // Required for format!("{:?}") on VzDataType
 use std::{collections::BTreeSet, fmt};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -15,12 +18,19 @@ pub enum SelectorType {
 impl fmt::Display for SelectorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SelectorType::Indices(indices) => write!(f, "{}", indices.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ")),
+            SelectorType::Indices(indices) => write!(
+                f,
+                "{}",
+                indices
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             SelectorType::All => write!(f, "all"),
         }
     }
 }
-
 
 pub struct Store {
     pub name: String,
@@ -63,19 +73,28 @@ impl Store {
         self.data.extend(datas);
     }
 
-    pub fn remove_data(&mut self, index: usize, count: usize) {
-        if index < self.data.len() {
-            let end = (index + count).min(self.data.len());
-            self.data.drain(index..end);
-            self.adjust_cursor();
+    pub fn remove_data(&mut self, index: usize, count: usize) -> Result<(), String> {
+        if index >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if index + count > self.data.len() {
+            return Err("Range exceeds data length".to_string());
+        }
+        self.data.drain(index..index + count);
+        self.adjust_cursor();
+        Ok(())
     }
 
-    pub fn move_data(&mut self, from: usize, to: usize) {
-        if from < self.data.len() {
-            let data = self.data.remove(from);
-            self.data.insert(to.min(self.data.len()), data);
+    pub fn move_data(&mut self, from: usize, to: usize) -> Result<(), String> {
+        if from >= self.data.len() || to >= self.data.len() {
+            return Err("Index out of bounds".to_string());
         }
+        if from == to {
+            return Ok(());
+        }
+        let data = self.data.remove(from);
+        self.data.insert(to, data);
+        Ok(())
     }
 
     pub fn clear_data(&mut self) {
@@ -94,7 +113,9 @@ impl Store {
         let (_, total_pages) = self.get_page_info();
         let page_idx = page.max(1).min(total_pages) - 1;
         let start_index = page_idx.saturating_mul(self.page_size);
-        let end_index = (page_idx + 1).min(total_pages).saturating_mul(self.page_size);
+        let end_index = (page_idx + 1)
+            .min(total_pages)
+            .saturating_mul(self.page_size);
         self.get_data_by_range(start_index, end_index)
     }
 
@@ -205,15 +226,38 @@ impl Store {
                 let ranges: Vec<_> = s.split('-').map(|s| s.trim()).collect();
                 if ranges.len() > 2 {
                     return Err(format!("Invalid range: {}", s));
+                }
+
+                let start_str = ranges
+                    .get(0)
+                    .ok_or_else(|| format!("Invalid range: {}", s))?;
+                let end_str = if ranges.len() == 2 {
+                    ranges.get(1).unwrap_or(start_str)
                 } else {
-                    let start = ranges.get(0).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
-                    let end = ranges.get(1).unwrap_or(&"0").parse::<usize>().unwrap_or(0);
-                    if start > end {
-                        return Err(format!("Invalid range: {}", s));
-                    }
-                    for i in start..=end {
-                        indices.insert(i);
-                    }
+                    start_str
+                };
+
+                let start = if start_str.is_empty() {
+                    0
+                } else {
+                    start_str
+                        .parse::<usize>()
+                        .map_err(|_| format!("Invalid number in range: {}", start_str))?
+                };
+                let end = if end_str.is_empty() {
+                    start
+                } else {
+                    end_str
+                        .parse::<usize>()
+                        .map_err(|_| format!("Invalid number in range: {}", end_str))?
+                };
+
+                if start > end {
+                    return Err(format!("Invalid range: {}", s));
+                }
+
+                for i in start..=end {
+                    indices.insert(i);
                 }
             }
         }
@@ -226,11 +270,9 @@ impl Store {
         }
         let selector_type = Store::parse_selection_type(selector);
         match selector_type {
-            Ok(selector_type) => {
-                match selector_type {
-                    SelectorType::Indices(indices) => self.get_multiple_data(&indices),
-                    SelectorType::All => self.get_all_data(),
-                }
+            Ok(selector_type) => match selector_type {
+                SelectorType::Indices(indices) => self.get_multiple_data(&indices),
+                SelectorType::All => self.get_all_data(),
             },
             Err(e) => Err(e),
         }
@@ -238,35 +280,31 @@ impl Store {
 
     pub fn sort(&mut self, sort_by: Option<&str>) {
         self.data.sort_by_key(|item| match sort_by {
-            Some("addr") => {
-                match item {
-                    VzData::Pointer(p) => p.address.to_string(),
-                    VzData::Module(m) => m.address.to_string(),
-                    VzData::Range(r) => r.address.to_string(),
-                    VzData::Function(f) => f.address.to_string(),
-                    VzData::Variable(v) => v.address.to_string(),
-                    VzData::JavaClass(c) => c.name.to_string(),
-                    VzData::JavaMethod(m) => m.name.to_string(),
-                    VzData::ObjCClass(c) => c.name.to_string(),
-                    VzData::ObjCMethod(m) => m.name.to_string(),
-                    VzData::Thread(t) => t.id.to_string(),
-                    _ => "".to_string(),
-                }
+            Some("addr") => match item {
+                VzData::Pointer(p) => p.address.to_string(),
+                VzData::Module(m) => m.address.to_string(),
+                VzData::Range(r) => r.address.to_string(),
+                VzData::Function(f) => f.address.to_string(),
+                VzData::Variable(v) => v.address.to_string(),
+                VzData::JavaClass(c) => c.name.to_string(),
+                VzData::JavaMethod(m) => m.name.to_string(),
+                VzData::ObjCClass(c) => c.name.to_string(),
+                VzData::ObjCMethod(m) => m.name.to_string(),
+                VzData::Thread(t) => t.id.to_string(),
+                _ => "".to_string(),
             },
-            _ | None => {
-                match item {
-                    VzData::Pointer(p) => p.address.to_string(),
-                    VzData::Module(m) => m.name.to_string(),
-                    VzData::Range(r) => r.address.to_string(),
-                    VzData::Function(f) => f.name.to_string(),
-                    VzData::Variable(v) => v.name.to_string(),
-                    VzData::JavaClass(c) => c.name.to_string(),
-                    VzData::JavaMethod(m) => m.name.to_string(),
-                    VzData::ObjCClass(c) => c.name.to_string(),
-                    VzData::ObjCMethod(m) => m.name.to_string(),
-                    VzData::Thread(f) => f.id.to_string(),
-                    _ => "".to_string(),
-                }
+            _ | None => match item {
+                VzData::Pointer(p) => p.address.to_string(),
+                VzData::Module(m) => m.name.to_string(),
+                VzData::Range(r) => r.address.to_string(),
+                VzData::Function(f) => f.name.to_string(),
+                VzData::Variable(v) => v.name.to_string(),
+                VzData::JavaClass(c) => c.name.to_string(),
+                VzData::JavaMethod(m) => m.name.to_string(),
+                VzData::ObjCClass(c) => c.name.to_string(),
+                VzData::ObjCMethod(m) => m.name.to_string(),
+                VzData::Thread(f) => f.id.to_string(),
+                _ => "".to_string(),
             },
         });
         self.adjust_cursor();
@@ -279,28 +317,40 @@ impl Store {
 
         let mut data = self.data.clone();
         data.retain(|item: &VzData| {
-            filter_segments.iter().all(|segment| {
-                match segment {
-                    FilterSegment::Condition(cond) => self.evaluate_condition_for_item(item, cond),
-                    FilterSegment::Logical(op) => match op {
-                        LogicalOperator::And => true,
-                        LogicalOperator::Or => false,
-                    },
-                }
+            filter_segments.iter().all(|segment| match segment {
+                FilterSegment::Condition(cond) => self.evaluate_condition_for_item(item, cond),
+                FilterSegment::Logical(op) => match op {
+                    LogicalOperator::And => true,
+                    LogicalOperator::Or => false,
+                },
             })
         });
         self.data = data;
         self.adjust_cursor();
     }
 
-    fn evaluate_condition_for_item(&self, vz_data_item: &VzData, condition: &super::filter::FilterCondition) -> bool {
-        if let Some(item_field_value) = self.get_field_value_for_filtering(vz_data_item, &condition.key) {
-            return self.compare_filter_values(&item_field_value, &condition.operator, &condition.value);
+    fn evaluate_condition_for_item(
+        &self,
+        vz_data_item: &VzData,
+        condition: &super::filter::FilterCondition,
+    ) -> bool {
+        if let Some(item_field_value) =
+            self.get_field_value_for_filtering(vz_data_item, &condition.key)
+        {
+            return self.compare_filter_values(
+                &item_field_value,
+                &condition.operator,
+                &condition.value,
+            );
         }
         false
     }
 
-    fn get_field_value_for_filtering(&self, vz_data_item: &VzData, key: &str) -> Option<FilterValue> {
+    fn get_field_value_for_filtering(
+        &self,
+        vz_data_item: &VzData,
+        key: &str,
+    ) -> Option<FilterValue> {
         match key.to_lowercase().as_str() {
             "name" => match vz_data_item {
                 VzData::Module(m) => Some(FilterValue::String(m.name.clone())),
@@ -321,8 +371,8 @@ impl Store {
                 _ => None,
             },
             "size" => match vz_data_item {
-                VzData::Module(m) => Some(FilterValue::Number(m.size as f64)),    // Assumes m.size is a newtype like Size(u64)
-                VzData::Range(r) => Some(FilterValue::Number(r.size as f64)),      // Assumes r.size is a newtype like Size(u64)
+                VzData::Module(m) => Some(FilterValue::Number(m.size as f64)), // Assumes m.size is a newtype like Size(u64)
+                VzData::Range(r) => Some(FilterValue::Number(r.size as f64)), // Assumes r.size is a newtype like Size(u64)
                 _ => None,
             },
             "protect" | "protection" => match vz_data_item {
@@ -330,20 +380,42 @@ impl Store {
                 _ => None,
             },
             "type" => match vz_data_item {
-                VzData::Pointer(p) => Some(FilterValue::String(format!("{:?}", p.base.data_type).to_lowercase())),
-                VzData::Module(m) => Some(FilterValue::String(format!("{:?}", m.base.data_type).to_lowercase())),
-                VzData::Range(r) => Some(FilterValue::String(format!("{:?}", r.base.data_type).to_lowercase())),
-                VzData::Function(f) => Some(FilterValue::String(format!("{:?}", f.base.data_type).to_lowercase())),
-                VzData::Variable(v) => Some(FilterValue::String(format!("{:?}", v.base.data_type).to_lowercase())),
-                VzData::JavaClass(jc) => Some(FilterValue::String(format!("{:?}", jc.base.data_type).to_lowercase())),
-                VzData::JavaMethod(jm) => Some(FilterValue::String(format!("{:?}", jm.base.data_type).to_lowercase())),
-                VzData::ObjCClass(oc) => Some(FilterValue::String(format!("{:?}", oc.base.data_type).to_lowercase())),
-                VzData::ObjCMethod(om) => Some(FilterValue::String(format!("{:?}", om.base.data_type).to_lowercase())),
-                VzData::Thread(t) => Some(FilterValue::String(format!("{:?}", t.base.data_type).to_lowercase())),
+                VzData::Pointer(p) => Some(FilterValue::String(
+                    format!("{:?}", p.base.data_type).to_lowercase(),
+                )),
+                VzData::Module(m) => Some(FilterValue::String(
+                    format!("{:?}", m.base.data_type).to_lowercase(),
+                )),
+                VzData::Range(r) => Some(FilterValue::String(
+                    format!("{:?}", r.base.data_type).to_lowercase(),
+                )),
+                VzData::Function(f) => Some(FilterValue::String(
+                    format!("{:?}", f.base.data_type).to_lowercase(),
+                )),
+                VzData::Variable(v) => Some(FilterValue::String(
+                    format!("{:?}", v.base.data_type).to_lowercase(),
+                )),
+                VzData::JavaClass(jc) => Some(FilterValue::String(
+                    format!("{:?}", jc.base.data_type).to_lowercase(),
+                )),
+                VzData::JavaMethod(jm) => Some(FilterValue::String(
+                    format!("{:?}", jm.base.data_type).to_lowercase(),
+                )),
+                VzData::ObjCClass(oc) => Some(FilterValue::String(
+                    format!("{:?}", oc.base.data_type).to_lowercase(),
+                )),
+                VzData::ObjCMethod(om) => Some(FilterValue::String(
+                    format!("{:?}", om.base.data_type).to_lowercase(),
+                )),
+                VzData::Thread(t) => Some(FilterValue::String(
+                    format!("{:?}", t.base.data_type).to_lowercase(),
+                )),
                 _ => None,
             },
             "value_type" => match vz_data_item {
-                VzData::Pointer(p) => Some(FilterValue::String(format!("{:?}", p.value_type).to_lowercase())),
+                VzData::Pointer(p) => Some(FilterValue::String(
+                    format!("{:?}", p.value_type).to_lowercase(),
+                )),
                 _ => None,
             },
             "id" => match vz_data_item {
@@ -374,8 +446,12 @@ impl Store {
             (FilterValue::String(s_item), FilterValue::String(s_filter)) => match op {
                 FilterOperator::Equal => s_item.eq_ignore_ascii_case(s_filter),
                 FilterOperator::NotEqual => !s_item.eq_ignore_ascii_case(s_filter),
-                FilterOperator::Contains => s_item.to_lowercase().contains(&s_filter.to_lowercase()),
-                FilterOperator::NotContains => !s_item.to_lowercase().contains(&s_filter.to_lowercase()),
+                FilterOperator::Contains => {
+                    s_item.to_lowercase().contains(&s_filter.to_lowercase())
+                }
+                FilterOperator::NotContains => {
+                    !s_item.to_lowercase().contains(&s_filter.to_lowercase())
+                }
                 FilterOperator::LessThan => s_item < s_filter,
                 FilterOperator::LessEqual => s_item <= s_filter,
                 FilterOperator::GreaterThan => s_item > s_filter,
@@ -397,19 +473,30 @@ impl Store {
             },
             (FilterValue::Number(n_item), FilterValue::String(s_filter)) => {
                 if let Ok(n_filter) = s_filter.parse::<f64>() {
-                    self.compare_filter_values(&FilterValue::Number(*n_item), op, &FilterValue::Number(n_filter))
-                } else { false }
+                    self.compare_filter_values(
+                        &FilterValue::Number(*n_item),
+                        op,
+                        &FilterValue::Number(n_filter),
+                    )
+                } else {
+                    false
+                }
             }
             (FilterValue::String(s_item), FilterValue::Number(n_filter)) => {
                 if let Ok(n_item) = s_item.parse::<f64>() {
-                    self.compare_filter_values(&FilterValue::Number(n_item), op, &FilterValue::Number(*n_filter))
-                } else { false }
+                    self.compare_filter_values(
+                        &FilterValue::Number(n_item),
+                        op,
+                        &FilterValue::Number(*n_filter),
+                    )
+                } else {
+                    false
+                }
             }
             _ => false,
         }
     }
 
-    
     pub fn to_string(&self, page: Option<usize>) -> String {
         let cursor = if self.data.len() > 0 {
             self.get_cursor()
@@ -417,7 +504,8 @@ impl Store {
             0
         };
         let (current_page, total_pages) = self.get_page_info();
-        let header = format!("{} {}-{} [{}] ({}/{})",
+        let header = format!(
+            "{} {}-{} [{}] ({}/{})",
             self.name.clone().green(),
             cursor,
             self.get_cursor_end(),
@@ -425,17 +513,23 @@ impl Store {
             current_page,
             total_pages
         );
-        let data = self.get_data_by_page(page.unwrap_or(current_page)).unwrap();
+        let data = match self.get_data_by_page(page.unwrap_or(current_page)) {
+            Ok(d) => d,
+            Err(e) => {
+                crate::util::logger::error(&format!("Page error: {}", e));
+                Vec::new()
+            }
+        };
         let max_idx_len = self.data.len().to_string().len();
         let mut body = String::new();
         for (i, item) in data.iter().enumerate() {
             let global_idx = self.get_cursor() + i;
-            body.push_str(&format!("\n[{}] {}",
+            body.push_str(&format!(
+                "\n[{}] {}",
                 format!("{:^width$}", global_idx, width = max_idx_len).blue(),
                 item
             ));
         }
         format!("{}{}", header, body)
     }
-
 }

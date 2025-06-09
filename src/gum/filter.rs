@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
 use regex::Regex;
+use serde_json::{json, Value};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum FilterValue {
@@ -70,7 +70,7 @@ fn parse_value(s: &str) -> Result<FilterValue, String> {
 }
 
 pub fn parse_filter_string(input: &str) -> Result<Vec<FilterSegment>, String> {
-    let re_logical_ops = Regex::new(r"(&|\|)").unwrap();
+    let re_logical_ops = Regex::new(r"(&|\|)").map_err(|e| format!("Regex error: {}", e))?;
     let mut segments_str: Vec<String> = Vec::new();
     let mut last_match_end = 0;
 
@@ -90,8 +90,9 @@ pub fn parse_filter_string(input: &str) -> Result<Vec<FilterSegment>, String> {
     let mut result_filter_segments = Vec::new();
 
     let re_condition = Regex::new(
-        r#"^\s*([^'"\s]+?)\s*(!=|<=|>=|=|>|<|:|!:)\s*(?:'([^']*)'|"([^"]*)"|([^\s&|]+))\s*$"#
-    ).unwrap();
+        r#"^\s*([^'"\s]+?)\s*(!=|<=|>=|=|>|<|:|!:)\s*(?:'([^']*)'|"([^"]*)"|([^\s&|]+))\s*$"#,
+    )
+    .map_err(|e| format!("Regex error: {}", e))?;
 
     for segment_str_val in segments_str {
         if segment_str_val == "&" {
@@ -100,16 +101,18 @@ pub fn parse_filter_string(input: &str) -> Result<Vec<FilterSegment>, String> {
             result_filter_segments.push(FilterSegment::Logical(LogicalOperator::Or));
         } else {
             if let Some(caps) = re_condition.captures(&segment_str_val) {
-                let key = caps.get(1).unwrap().as_str().to_string();
-                let op_str = caps.get(2).unwrap().as_str();
+                let key = caps.get(1).ok_or("Missing key")?.as_str().to_string();
+                let op_str = caps.get(2).ok_or("Missing operator")?.as_str();
                 let operator = string_to_filter_operator(op_str)?;
 
-                let value_str_inner = if caps.get(3).is_some() {
-                    caps.get(3).unwrap().as_str()
-                } else if caps.get(4).is_some() {
-                    caps.get(4).unwrap().as_str()
+                let value_str_inner = if let Some(c) = caps.get(3) {
+                    c.as_str()
+                } else if let Some(c) = caps.get(4) {
+                    c.as_str()
+                } else if let Some(c) = caps.get(5) {
+                    c.as_str()
                 } else {
-                    caps.get(5).unwrap().as_str()
+                    return Err("Missing value".to_string());
                 };
 
                 let parsed_value = parse_value(value_str_inner)?;
@@ -120,7 +123,10 @@ pub fn parse_filter_string(input: &str) -> Result<Vec<FilterSegment>, String> {
                     value: parsed_value,
                 }));
             } else {
-                return Err(format!("Failed to parse condition segment: '{}'. Please check syntax.", segment_str_val));
+                return Err(format!(
+                    "Failed to parse condition segment: '{}'. Please check syntax.",
+                    segment_str_val
+                ));
             }
         }
     }

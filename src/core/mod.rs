@@ -4,20 +4,23 @@ mod kill;
 mod manager;
 mod ps;
 
-use crate::{gum::attach, util::{lengthed, highlight}};
+use crate::{
+    gum::attach,
+    util::{highlight, lengthed},
+};
 use actions::get_device;
 use clap::{CommandFactory, Parser};
 use cli::{Cli, Commands};
 use crossterm::style::Stylize;
 use manager::Manager;
-use std::{process::exit};
+use std::process::exit;
 
 pub fn execute_cli() {
     let cliparser = Cli::parse();
     // Handle completion generation if requested
     if let Some(shell) = cliparser.generate_completion {
         if let Err(e) = cliparser.generate_completion() {
-            eprintln!("Failed to generate completion: {}", e);
+            crate::util::logger::error(&format!("Failed to generate completion: {}", e));
             std::process::exit(1);
         }
         std::process::exit(0);
@@ -30,7 +33,7 @@ pub fn execute_cli() {
             let bin_name = "vlitz".to_string();
             clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
             std::process::exit(0);
-        },
+        }
         Commands::Attach(args) => {
             let device_opt = get_device(&_manager, &args.connection);
             if let Some(mut device) = device_opt {
@@ -44,7 +47,11 @@ pub fn execute_cli() {
         Commands::Ps(args) => {
             let device = get_device(&_manager, &args.connection);
             if let Some(device) = device {
-                println!("{} {}", "Device:".green(), device.get_id().replace("\"", "").green());
+                println!(
+                    "{} {}",
+                    "Device:".green(),
+                    device.get_id().replace("\"", "").green()
+                );
                 let processes = ps::ps(&device, args);
                 println!(
                     "{} {:<12} ({})",
@@ -53,8 +60,8 @@ pub fn execute_cli() {
                     processes.len(),
                 );
                 for process in processes {
-                    let process_name = if args.filter.is_some() {
-                        highlight(process.get_name(), args.filter.as_ref().unwrap())
+                    let process_name = if let Some(ref f) = args.filter {
+                        highlight(process.get_name(), f)
                     } else {
                         process.get_name().to_string()
                     };
@@ -78,9 +85,11 @@ pub fn execute_cli() {
                     println!("No processes killed");
                 } else {
                     for prc in killed_processes {
-                        println!("Killed process {} {}",
-                        format!("\"{}\"", prc.0).yellow(),
-                        format!("[{}]", prc.1.to_string()).blue());
+                        println!(
+                            "Killed process {} {}",
+                            format!("\"{}\"", prc.0).yellow(),
+                            format!("[{}]", prc.1.to_string()).blue()
+                        );
                     }
                     exit(0);
                 }
