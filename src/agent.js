@@ -94,7 +94,8 @@ rpc.exports = {
         Process.arch
     ],
     // reader
-    reader_byte: a => ptr(a).readU8(),
+    reader_byte: a => ptr(a).readS8(),
+    reader_ubyte: a => ptr(a).readU8(),
     reader_short: a => ptr(a).readS16(),
     reader_ushort: a => ptr(a).readU16(),
     reader_int: a => ptr(a).readS32(),
@@ -103,10 +104,11 @@ rpc.exports = {
     reader_ulong: a => ptr(a).readU64(),
     reader_float: a => ptr(a).readFloat(),
     reader_double: a => ptr(a).readDouble(),
-    reader_string: a => ptr(a).readUtf8String(),
-    reader_bytes: (a, l = 8) => ptr(a).readByteArray(l),
+    reader_string: (a, l = 8) => ptr(a).readCString(l),
+    reader_bytes: (a, l = 8) => Object.values(new Uint8Array(ptr(a).readByteArray(l))),
     // writer
-    writer_byte: (a, v) => ptr(a).writeU8(v),
+    writer_byte: (a, v) => ptr(a).writeS8(v),
+    writer_ubyte: (a, v) => ptr(a).writeU8(v),
     writer_short: (a, v) => ptr(a).writeS16(v),
     writer_ushort: (a, v) => ptr(a).writeU16(v),
     writer_long: (a, v) => ptr(a).writeS64(v),

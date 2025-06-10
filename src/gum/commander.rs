@@ -2,7 +2,7 @@
 use crate::gum::{
     filter::parse_filter_string,
     list::{list_functions, list_ranges, list_variables},
-    memory::{read_memory_by_type, write_memory_by_type, resolve_address_argument},
+    memory::{get_address_from_data, parse_value_type, read_memory_by_type, write_memory_by_type},
 };
 use crate::util::logger;
 use crossterm::style::Stylize;
@@ -1210,64 +1210,50 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn read(&mut self, args: &[&str]) -> bool {
-        // Parse arguments: [address] [type] [length]
-        let address = match args.get(0) {
-            Some(addr_arg) => {
-                match resolve_address_argument(
-                    addr_arg,
-                    &self.field.data,
-                    &self.lib.data,
-                    self.navigator.get_data(),
-                ) {
+        let arg0 = args.get(0).map(|s| s.to_string()).unwrap_or_default();
+        let res = self.selector(arg0.as_str());
+        let (address, value_type) = match res {
+            Ok(data) => {
+                if data.is_empty() {
+                    logger::error("No data selected");
+                    return true;
+                }
+                let addr = match get_address_from_data(data[0])
+                    .ok_or_else(|| "No valid address found in selected data".to_string())
+                    .and_then(|addr| {
+                        if addr == 0 {
+                            Err("Address cannot be zero".to_string())
+                        } else {
+                            Ok(addr)
+                        }
+                    }) {
                     Ok(addr) => addr,
                     Err(e) => {
-                        logger::error(&format!("Address resolution error: {}", e));
+                        logger::error(&e);
                         return true;
                     }
-                }
+                };
+                let vtype = args.get(1).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                (addr, vtype)
             }
-            None => {
-                // Try to use navigator data
-                match self.navigator.get_data() {
-                    Some(data) => match data {
-                        VzData::Pointer(p) => p.address,
-                        VzData::Module(m) => m.address,
-                        VzData::Range(r) => r.address,
-                        VzData::Function(f) => f.address,
-                        VzData::Variable(v) => v.address,
-                        _ => {
-                            logger::error("Navigator data does not have an address");
-                            return true;
-                        }
-                    },
-                    None => {
-                        logger::error("No address specified and navigator is empty");
+            Err(_) => {
+                match Self::parse_number(&arg0) {
+                    Ok(addr) => {
+                        let vtype = args.get(1).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                        (addr, vtype)
+                    }
+                    Err(e) => {
+                        logger::error(&format!("Invalid address: {}", e));
                         return true;
                     }
                 }
             }
         };
 
-        // Determine value type
-        let value_type = if let Some(type_arg) = args.get(1) {
-            self.parse_value_type(type_arg)
-        } else {
-            // Try to get type from VzData::Pointer in navigator or use default byte
-            match self.navigator.get_data() {
-                Some(VzData::Pointer(p)) => p.value_type.clone(),
-                _ => VzValueType::Byte, // Default to byte
-            }
-        };
-
-        // Parse length for bytes/array types
-        let length = if matches!(value_type, VzValueType::Bytes | VzValueType::Array) {
-            args.get(2).and_then(|l| l.parse::<usize>().ok()).or(Some(16))
-        } else {
-            None
-        };
+        let length = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(16);
 
         // Perform read operation
-        match read_memory_by_type(&mut self.script, address, &value_type, length) {
+        match read_memory_by_type(&mut self.script, address, &value_type, Some(length)) {
             Ok(result) => {
                 println!(
                     "{} {} {} = {}",
@@ -1286,47 +1272,54 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     fn write(&mut self, args: &[&str]) -> bool {
         // Parse arguments: [address] <value> [type]
-        if args.len() < 2 {
-            logger::error("Write command requires at least address and value arguments");
+        if args.len() < 1 {
+            logger::error("Write command requires at least value arguments");
             return true;
         }
 
-        let address = match args.get(0) {
-            Some(addr_arg) => {
-                match resolve_address_argument(
-                    addr_arg,
-                    &self.field.data,
-                    &self.lib.data,
-                    self.navigator.get_data(),
-                ) {
+        let arg0 = args.get(0).map(|s| s.to_string()).unwrap_or_default();
+        let res = self.selector(arg0.as_str());
+        let (address, value_str, value_type) = match res {
+            Ok(data) => {
+                if data.is_empty() {
+                    logger::error("No data selected");
+                    return true;
+                }
+                let addr = match get_address_from_data(data[0])
+                    .ok_or_else(|| "No valid address found in selected data".to_string())
+                    .and_then(|addr| {
+                        if addr == 0 {
+                            Err("Address cannot be zero".to_string())
+                        } else {
+                            Ok(addr)
+                        }
+                    }) {
                     Ok(addr) => addr,
                     Err(e) => {
-                        logger::error(&format!("Address resolution error: {}", e));
+                        logger::error(&e);
+                        return true;
+                    }
+                };
+                let vtype = args.get(2).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                (addr, args[1].to_string(), vtype)
+            }
+            Err(_) => {
+                match Self::parse_number(&arg0) {
+                    Ok(addr) => {
+                        let vtype = args.get(2).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                        (addr, args[1].to_string(), vtype)
+                    }
+                    Err(e) => {
+                        logger::error(&format!("Invalid address: {}", e));
                         return true;
                     }
                 }
             }
-            None => {
-                logger::error("Address argument is required");
-                return true;
-            }
-        };
-
-        let value_str = args[1];
-
-        // Determine value type
-        let value_type = if let Some(type_arg) = args.get(2) {
-            self.parse_value_type(type_arg)
-        } else {
-            // Try to get type from VzData::Pointer in navigator or use default byte
-            match self.navigator.get_data() {
-                Some(VzData::Pointer(p)) => p.value_type.clone(),
-                _ => VzValueType::Byte, // Default to byte
-            }
         };
 
         // Perform write operation
-        match write_memory_by_type(&mut self.script, address, value_str, &value_type) {
+
+        match write_memory_by_type(&mut self.script, address, &value_str, &value_type) {
             Ok(()) => {
                 println!(
                     "{} {} {} = {}",
@@ -1341,26 +1334,6 @@ impl<'a, 'b> Commander<'a, 'b> {
             }
         }
         true
-    }
-
-    fn parse_value_type(&self, type_str: &str) -> VzValueType {
-        match type_str.to_lowercase().as_str() {
-            "byte" | "int8" => VzValueType::Byte,
-            "ubyte" | "uint8" => VzValueType::UByte,
-            "short" | "int16" => VzValueType::Short,
-            "ushort" | "uint16" => VzValueType::UShort,
-            "int" | "int32" => VzValueType::Int,
-            "uint" | "uint32" => VzValueType::UInt,
-            "long" | "int64" => VzValueType::Long,
-            "ulong" | "uint64" => VzValueType::ULong,
-            "float" | "float32" => VzValueType::Float,
-            "double" | "float64" => VzValueType::Double,
-            "bool" | "boolean" => VzValueType::Bool,
-            "string" | "utf8" => VzValueType::String,
-            "bytes" | "array" => VzValueType::Bytes,
-            "pointer" => VzValueType::Pointer,
-            _ => VzValueType::Byte, // Default to byte
-        }
     }
 
     fn debug_exports(&mut self, _args: &[&str]) -> bool {

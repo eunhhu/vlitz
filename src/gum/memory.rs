@@ -1,112 +1,51 @@
-use frida::Script;
-use serde_json::json;
 use super::vzdata::{VzData, VzValueType};
 use crossterm::style::Stylize;
+use frida::Script;
+use serde_json::json;
 
-pub fn readbyte(script: &mut Script, addr: u64) -> Result<u8, String> {
-    let data = script
-        .exports
-        .call("reader_byte", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding.as_u64().ok_or_else(|| "Invalid byte".to_string())?;
-    Ok(value as u8)
+macro_rules! impl_reader {
+    ($name:ident, $ret:ty, $export:expr, $conv:ident) => {
+        pub fn $name(script: &mut Script, addr: u64) -> Result<$ret, String> {
+            let data = script
+                .exports
+                .call($export, Some(json!([addr])))
+                .map_err(|e| e.to_string())?;
+            let value = data
+                .ok_or_else(|| "No data returned".to_string())?
+                .$conv()
+                .ok_or_else(|| format!("Invalid value for {}", stringify!($name)))?;
+            Ok(value as $ret)
+        }
+    };
 }
 
-pub fn readshort(script: &mut Script, addr: u64) -> Result<i16, String> {
-    let data = script
-        .exports
-        .call("reader_short", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding
-        .as_i64()
-        .ok_or_else(|| "Invalid short".to_string())?;
-    Ok(value as i16)
+macro_rules! impl_writer {
+    ($name:ident, $export:expr, $typ:ty) => {
+        pub fn $name(script: &mut Script, addr: u64, value: $typ) -> Result<(), String> {
+            script
+                .exports
+                .call($export, Some(json!([addr, value])))
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    };
 }
 
-pub fn readushort(script: &mut Script, addr: u64) -> Result<u16, String> {
-    let data = script
-        .exports
-        .call("reader_ushort", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding
-        .as_u64()
-        .ok_or_else(|| "Invalid ushort".to_string())?;
-    Ok(value as u16)
-}
+impl_reader!(readbyte, i8, "reader_byte", as_i64);
+impl_reader!(readubyte, u8, "reader_ubyte", as_u64);
+impl_reader!(readshort, i16, "reader_short", as_i64);
+impl_reader!(readushort, u16, "reader_ushort", as_u64);
+impl_reader!(readint, i32, "reader_int", as_i64);
+impl_reader!(readuint, u32, "reader_uint", as_u64);
+impl_reader!(readlong, i64, "reader_long", as_i64);
+impl_reader!(readulong, u64, "reader_ulong", as_u64);
+impl_reader!(readfloat, f32, "reader_float", as_f64);
+impl_reader!(readdouble, f64, "reader_double", as_f64);
 
-pub fn readint(script: &mut Script, addr: u64) -> Result<i32, String> {
+pub fn readstring(script: &mut Script, addr: u64, len: Option<usize>) -> Result<String, String> {
     let data = script
         .exports
-        .call("reader_int", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding.as_i64().ok_or_else(|| "Invalid int".to_string())?;
-    Ok(value as i32)
-}
-
-pub fn readuint(script: &mut Script, addr: u64) -> Result<u32, String> {
-    let data = script
-        .exports
-        .call("reader_uint", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding.as_u64().ok_or_else(|| "Invalid uint".to_string())?;
-    Ok(value as u32)
-}
-
-pub fn readlong(script: &mut Script, addr: u64) -> Result<i64, String> {
-    let data = script
-        .exports
-        .call("reader_long", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding.as_i64().ok_or_else(|| "Invalid long".to_string())?;
-    Ok(value)
-}
-
-pub fn readulong(script: &mut Script, addr: u64) -> Result<u64, String> {
-    let data = script
-        .exports
-        .call("reader_ulong", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding
-        .as_u64()
-        .ok_or_else(|| "Invalid ulong".to_string())?;
-    Ok(value)
-}
-
-pub fn readfloat(script: &mut Script, addr: u64) -> Result<f32, String> {
-    let data = script
-        .exports
-        .call("reader_float", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding
-        .as_f64()
-        .ok_or_else(|| "Invalid float".to_string())?;
-    Ok(value as f32)
-}
-
-pub fn readdouble(script: &mut Script, addr: u64) -> Result<f64, String> {
-    let data = script
-        .exports
-        .call("reader_double", Some(json!([addr])))
-        .map_err(|e| e.to_string())?;
-    let binding = data.ok_or_else(|| "No data returned".to_string())?;
-    let value = binding
-        .as_f64()
-        .ok_or_else(|| "Invalid double".to_string())?;
-    Ok(value)
-}
-
-pub fn readstring(script: &mut Script, addr: u64) -> Result<String, String> {
-    let data = script
-        .exports
-        .call("reader_string", Some(json!([addr])))
+        .call("reader_string", Some(json!([addr, len])))
         .map_err(|e| e.to_string())?;
     let binding = data.ok_or_else(|| "No data returned".to_string())?;
     let value = binding
@@ -127,77 +66,16 @@ pub fn readbytes(script: &mut Script, addr: u64, len: usize) -> Result<Vec<u8>, 
     Ok(arr.iter().map(|v| v.as_u64().unwrap_or(0) as u8).collect())
 }
 
-pub fn writebyte(script: &mut Script, addr: u64, value: u8) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_byte", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writeshort(script: &mut Script, addr: u64, value: i16) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_short", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writeushort(script: &mut Script, addr: u64, value: u16) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_ushort", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writeint(script: &mut Script, addr: u64, value: i32) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_int", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writeuint(script: &mut Script, addr: u64, value: u32) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_uint", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writelong(script: &mut Script, addr: u64, value: i64) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_long", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writeulong(script: &mut Script, addr: u64, value: u64) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_ulong", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writefloat(script: &mut Script, addr: u64, value: f32) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_float", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn writedouble(script: &mut Script, addr: u64, value: f64) -> Result<(), String> {
-    script
-        .exports
-        .call("writer_double", Some(json!([addr, value])))
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
+impl_writer!(writebyte, "writer_byte", i8);
+impl_writer!(writeubyte, "writer_ubyte", u8);
+impl_writer!(writeshort, "writer_short", i16);
+impl_writer!(writeushort, "writer_ushort", u16);
+impl_writer!(writeint, "writer_int", i32);
+impl_writer!(writeuint, "writer_uint", u32);
+impl_writer!(writelong, "writer_long", i64);
+impl_writer!(writeulong, "writer_ulong", u64);
+impl_writer!(writefloat, "writer_float", f32);
+impl_writer!(writedouble, "writer_double", f64);
 
 pub fn writestring(script: &mut Script, addr: u64, value: &str) -> Result<(), String> {
     script
@@ -215,7 +93,7 @@ pub fn writebytes(script: &mut Script, addr: u64, value: &[u8]) -> Result<(), St
     Ok(())
 }
 
-fn parse_hex_or_decimal(s: &str) -> Result<u64, String> {
+pub fn parse_hex_or_decimal(s: &str) -> Result<u64, String> {
     if s.starts_with("0x") || s.starts_with("0X") {
         u64::from_str_radix(&s[2..], 16).map_err(|_| format!("Invalid hex number: {}", s))
     } else {
@@ -223,7 +101,7 @@ fn parse_hex_or_decimal(s: &str) -> Result<u64, String> {
     }
 }
 
-fn get_address_from_data(data: &VzData) -> Option<u64> {
+pub fn get_address_from_data(data: &VzData) -> Option<u64> {
     match data {
         VzData::Pointer(p) => Some(p.address),
         VzData::Module(m) => Some(m.address),
@@ -234,23 +112,26 @@ fn get_address_from_data(data: &VzData) -> Option<u64> {
     }
 }
 
-fn parse_value_type(s: &str) -> VzValueType {
+pub fn parse_value_type(s: &str) -> VzValueType {
     match s.to_lowercase().as_str() {
-        "byte" | "int8" => VzValueType::Byte,
-        "ubyte" | "uint8" => VzValueType::UByte,
-        "short" | "int16" => VzValueType::Short,
-        "ushort" | "uint16" => VzValueType::UShort,
-        "int" | "int32" => VzValueType::Int,
-        "uint" | "uint32" => VzValueType::UInt,
-        "long" | "int64" => VzValueType::Long,
-        "ulong" | "uint64" => VzValueType::ULong,
-        "float" | "float32" => VzValueType::Float,
-        "double" | "float64" => VzValueType::Double,
-        "bool" | "boolean" => VzValueType::Bool,
-        "string" | "utf8" => VzValueType::String,
-        "bytes" | "array" => VzValueType::Bytes,
-        "pointer" => VzValueType::Pointer,
-        _ => VzValueType::Byte, // Default to byte
+        "b" | "byte" | "int8" => VzValueType::Byte,
+        "ub" | "ubyte" | "uint8" => VzValueType::UByte,
+        "s" | "short" | "int16" => VzValueType::Short,
+        "us" | "ushort" | "uint16" => VzValueType::UShort,
+        "i" | "int" | "int32" => VzValueType::Int,
+        "ui" | "uint" | "uint32" => VzValueType::UInt,
+        "l" | "long" | "int64" => VzValueType::Long,
+        "ul" | "ulong" | "uint64" => VzValueType::ULong,
+        "f" | "float" | "float32" => VzValueType::Float,
+        "d" | "double" | "float64" => VzValueType::Double,
+        "bl" | "bool" | "boolean" => VzValueType::Bool,
+        "str" | "string" | "utf8" => VzValueType::String,
+        "bs" | "arr" | "bytes" | "array" => VzValueType::Bytes,
+        "p" | "pointer" => VzValueType::Pointer,
+        "" => VzValueType::Byte, // Default to Byte if empty
+        _ => {
+            VzValueType::Void // Return Void for unknown types
+        }
     }
 }
 
@@ -266,7 +147,7 @@ pub fn read_memory_by_type(
             Ok(format!("{} ({})", val, format!("{:#04x}", val).dark_grey()))
         }
         VzValueType::UByte | VzValueType::UInt8 => {
-            let val = readbyte(script, addr)?;
+            let val = readubyte(script, addr)?;
             Ok(format!("{} ({})", val, format!("{:#04x}", val).dark_grey()))
         }
         VzValueType::Short | VzValueType::Int16 => {
@@ -306,20 +187,20 @@ pub fn read_memory_by_type(
             Ok(format!("{}", val != 0))
         }
         VzValueType::String | VzValueType::Utf8 => {
-            let val = readstring(script, addr)?;
+            let val = readstring(script, addr, length)?;
             Ok(format!("\"{}\"", val))
         }
         VzValueType::Array | VzValueType::Bytes => {
             let len = length.unwrap_or(16);
             let val = readbytes(script, addr, len)?;
             let hex_str = val.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            Ok(format!("[{}] ({})", hex_str, len))
+            Ok(format!("{} ({})", hex_str, len))
         }
         VzValueType::Pointer => {
             let val = readulong(script, addr)?;
             Ok(format!("{:#018x}", val))
         }
-        VzValueType::Void => Err("Cannot read void type".to_string()),
+        VzValueType::Void => Err("Cannot read type".to_string()),
     }
 }
 
@@ -332,11 +213,11 @@ pub fn write_memory_by_type(
     match value_type {
         VzValueType::Byte | VzValueType::Int8 => {
             let val = value_str.parse::<i8>().map_err(|_| "Invalid byte value")?;
-            writebyte(script, addr, val as u8)
+            writebyte(script, addr, val)
         }
         VzValueType::UByte | VzValueType::UInt8 => {
             let val = value_str.parse::<u8>().map_err(|_| "Invalid ubyte value")?;
-            writebyte(script, addr, val)
+            writeubyte(script, addr, val)
         }
         VzValueType::Short | VzValueType::Int16 => {
             let val = value_str.parse::<i16>().map_err(|_| "Invalid short value")?;
@@ -372,8 +253,8 @@ pub fn write_memory_by_type(
         }
         VzValueType::Bool | VzValueType::Boolean => {
             let val = match value_str.to_lowercase().as_str() {
-                "true" | "1" => 1u8,
-                "false" | "0" => 0u8,
+                "true" | "1" => 1i8,
+                "false" | "0" => 0i8,
                 _ => return Err("Invalid boolean value, use true/false or 1/0".to_string()),
             };
             writebyte(script, addr, val)
@@ -405,51 +286,4 @@ pub fn write_memory_by_type(
         }
         VzValueType::Void => Err("Cannot write void type".to_string()),
     }
-}
-
-pub fn resolve_address_argument(
-    addr_arg: &str,
-    field_data: &[VzData],
-    lib_data: &[VzData],
-    navigator_data: Option<&VzData>,
-) -> Result<u64, String> {
-    // Try to parse as direct address first
-    if let Ok(addr) = parse_hex_or_decimal(addr_arg) {
-        return Ok(addr);
-    }
-
-    // Try to parse as store selector (field:5 or lib:3)
-    if let Some(colon_pos) = addr_arg.find(':') {
-        let store_name = &addr_arg[..colon_pos];
-        let selector = &addr_arg[colon_pos + 1..];
-        
-        let data = match store_name.to_lowercase().as_str() {
-            "field" | "fld" | "f" => field_data,
-            "lib" | "l" => lib_data,
-            _ => return Err(format!("Unknown store: {}", store_name)),
-        };
-        
-        if let Ok(index) = selector.parse::<usize>() {
-            if index < data.len() {
-                if let Some(addr) = get_address_from_data(&data[index]) {
-                    return Ok(addr);
-                } else {
-                    return Err(format!("Data at {}:{} does not have an address", store_name, index));
-                }
-            } else {
-                return Err(format!("Index {} out of bounds for store {}", index, store_name));
-            }
-        } else {
-            return Err(format!("Invalid index: {}", selector));
-        }
-    }
-
-    // Check if navigator has address data
-    if let Some(nav_data) = navigator_data {
-        if let Some(addr) = get_address_from_data(nav_data) {
-            return Ok(addr);
-        }
-    }
-
-    Err(format!("Cannot resolve address from: {}", addr_arg))
 }
