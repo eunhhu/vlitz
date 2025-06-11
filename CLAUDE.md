@@ -19,8 +19,16 @@ cargo fmt                      # Format code
 cargo clippy                   # Run linter
 
 # Run the tool
-./target/debug/vlitz --help    # Show help
-./target/release/vlitz ps      # List processes
+./target/debug/vlitz --help        # Show help
+./target/debug/vlitz devices       # List available devices
+./target/debug/vlitz ps             # List processes on local device
+./target/debug/vlitz -U ps          # List processes on USB device
+./target/debug/vlitz attach -n notepad  # Attach to process by name
+./target/debug/vlitz attach -p 1234     # Attach to process by PID
+./target/debug/vlitz kill -n notepad    # Kill process by name
+
+# Generate shell completions
+./target/debug/vlitz completions bash > vlitz.bash
 ```
 
 ## Architecture Overview
@@ -72,3 +80,11 @@ cargo clippy                   # Run linter
 ### JavaScript Agent
 
 The `src/agent.js` file contains the Frida script that gets injected into target processes. It provides filtering, memory access, and other dynamic analysis capabilities that are controlled from the CLI.
+
+### Interactive Session Commands
+
+Once attached to a process, the tool enters an interactive mode with various commands managed by `gum/session.rs` and parsed by `parse_command()`. The session provides a command-line interface for real-time process interaction.
+
+### Testing
+
+No specific test framework is configured in this project. Use `cargo test` to run any unit tests, though the primary testing approach appears to be manual testing with real processes and devices.

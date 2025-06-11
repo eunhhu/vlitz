@@ -287,3 +287,70 @@ pub fn write_memory_by_type(
         VzValueType::Void => Err("Cannot write void type".to_string()),
     }
 }
+
+pub fn view_memory(
+    script: &mut Script,
+    addr: u64,
+    _value_type: &VzValueType,
+    length: usize,
+) -> Result<String, String> {
+    let bytes = readbytes(script, addr, length)?;
+    if bytes.is_empty() {
+        return Err("No data read from memory".to_string());
+    }
+    
+    let mut output = String::new();
+    
+    // Header with column numbers
+    output.push_str(&format!("{}    {}\n", 
+        "           ".dark_grey(),
+        "0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F    0123456789ABCDEF".cyan()
+    ));
+    
+    // Process bytes in 16-byte chunks
+    for (chunk_idx, chunk) in bytes.chunks(16).enumerate() {
+        let current_addr = addr + (chunk_idx * 16) as u64;
+        
+        // Address column
+        output.push_str(&format!("{:#010x}  ", current_addr).yellow().to_string());
+        
+        // Hex bytes
+        for &byte in chunk.iter() {
+            let hex_str = format!("{:02x}", byte);
+            let colored_hex = match byte {
+                0x00 => hex_str.dark_grey(),
+                0x20..=0x7E => hex_str.green(),  // Printable ASCII
+                0xFF => hex_str.red(),
+                _ => hex_str.white(),
+            };
+            output.push_str(&format!("{} ", colored_hex));
+        }
+        
+        // Pad remaining hex columns if chunk is less than 16 bytes
+        for _ in chunk.len()..16 {
+            output.push_str("   ");
+        }
+        
+        // ASCII representation separator
+        output.push_str("   ");
+        
+        // ASCII representation
+        for &byte in chunk {
+            let ascii_char = if byte >= 0x20 && byte <= 0x7E {
+                (byte as char).to_string().green()
+            } else {
+                ".".to_string().dark_grey()
+            };
+            output.push_str(&ascii_char.to_string());
+        }
+        
+        // Pad remaining ASCII columns if chunk is less than 16 bytes
+        for _ in chunk.len()..16 {
+            output.push(' ');
+        }
+        
+        output.push('\n');
+    }
+    
+    Ok(output)
+}

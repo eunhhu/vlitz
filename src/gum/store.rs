@@ -2,9 +2,8 @@
 
 use super::{
     filter::{FilterOperator, FilterSegment, FilterValue, LogicalOperator},
-    vzdata::{VzData, VzDataType},
+    vzdata::{VzData},
 };
-use crate::util::lengthed;
 use crossterm::style::Stylize;
 use std::fmt::Debug; // Required for format!("{:?}") on VzDataType
 use std::{collections::BTreeSet, fmt};
@@ -63,10 +62,6 @@ impl Store {
         }
 
         self.cursor = (self.cursor / self.page_size).saturating_mul(self.page_size);
-    }
-
-    pub fn add_data(&mut self, data: VzData) {
-        self.data.push(data);
     }
 
     pub fn add_datas(&mut self, datas: Vec<VzData>) {
