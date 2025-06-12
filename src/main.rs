@@ -1,6 +1,6 @@
 mod core;
-mod util;
 mod gum;
+mod util;
 
 use core::execute_cli;
 
