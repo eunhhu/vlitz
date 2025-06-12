@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, Args, ValueEnum, CommandFactory};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use std::io;
 
@@ -32,16 +32,26 @@ impl Cli {
         .multiple(false)
 ))]
 pub struct ConnectionArgs {
-    #[clap(short = 'D', long, value_name = "ID", help = "connect to device with the given ID")]
+    #[clap(
+        short = 'D',
+        long,
+        value_name = "ID",
+        help = "connect to device with the given ID"
+    )]
     pub device: Option<String>,
 
     #[clap(short = 'U', long, help = "connect to USB device")]
     pub usb: bool,
-    
+
     #[clap(short = 'R', long, help = "connect to remote frida-server")]
     pub remote: bool,
 
-    #[clap(short = 'H', long, value_name = "HOST", help = "connect to remote frida-server on HOST")]
+    #[clap(
+        short = 'H',
+        long,
+        value_name = "HOST",
+        help = "connect to remote frida-server on HOST"
+    )]
     pub host: Option<String>,
 }
 
@@ -55,7 +65,7 @@ pub struct ConnectionArgs {
 pub struct ProcessArgs {
     #[clap(short = 'n', long, value_name = "NAME", help = "attach to NAME")]
     pub attach_name: Option<String>,
-    
+
     #[clap(short = 'p', long, value_name = "PID", help = "attach to PID")]
     pub attach_pid: Option<u32>,
 
@@ -73,13 +83,18 @@ pub struct ProcessArgs {
 pub struct TargetArgs {
     #[clap(short, long, value_name = "TARGET", help = "spawn FILE")]
     pub file: Option<String>,
-    
-    #[clap(short = 'N', long, value_name = "IDENTIFIER", help = "attach to IDENTIFIER")]
+
+    #[clap(
+        short = 'N',
+        long,
+        value_name = "IDENTIFIER",
+        help = "attach to IDENTIFIER"
+    )]
     pub attach_identifier: Option<String>,
 
     #[clap(short = 'n', long, value_name = "NAME", help = "attach to NAME")]
     pub attach_name: Option<String>,
-    
+
     #[clap(short = 'p', long, value_name = "PID", help = "attach to PID")]
     pub attach_pid: Option<u32>,
 
@@ -112,7 +127,6 @@ pub struct PsArgs {
 
     // #[clap(short, long, help = "include all installed applications")]
     // pub installed: bool,
-
     #[clap(short, long, help = "sort by NAME or PID")]
     pub sort: Option<Sort>,
 

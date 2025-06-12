@@ -1,7 +1,7 @@
 // src/gum/navigator.rs
-use std::fmt;
-use crossterm::style::Stylize;
 use super::vzdata::{VzBase, VzData, VzDataType, VzPointer, VzValueType};
+use crossterm::style::Stylize;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub struct Navigator {
@@ -12,46 +12,66 @@ impl fmt::Display for Navigator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.data {
             Some(data) => match data {
-                VzData::Pointer(p) => write!(f, "{}{}",
+                VzData::Pointer(p) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", p.base.data_type.to_string()).blue(),
                     format!("{:#x}", p.address).yellow(),
                 ),
-                VzData::Module(m) => write!(f, "{}{}{}",
+                VzData::Module(m) => write!(
+                    f,
+                    "{}{}{}",
                     format!("{}:", m.base.data_type.to_string()).blue(),
                     format!("{}", m.name),
                     format!("@{:#x}", m.address).yellow(),
                 ),
-                VzData::Range(r) => write!(f, "{}{}",
+                VzData::Range(r) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", r.base.data_type.to_string()).blue(),
                     format!("{:#x}", r.address).yellow(),
                 ),
-                VzData::Function(func) => write!(f, "{}{}{}",
+                VzData::Function(func) => write!(
+                    f,
+                    "{}{}{}",
                     format!("{}:", func.base.data_type.to_string()).blue(),
                     format!("{}", func.name),
                     format!("@{:#x}", func.address).yellow(),
                 ),
-                VzData::Variable(v) => write!(f, "{}{}{}",
+                VzData::Variable(v) => write!(
+                    f,
+                    "{}{}{}",
                     format!("{}:", v.base.data_type.to_string()).blue(),
                     format!("{}", v.name),
                     format!("@{:#x}", v.address).yellow(),
                 ),
-                VzData::JavaClass(jc) => write!(f, "{}{}",
+                VzData::JavaClass(jc) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", jc.base.data_type.to_string()).blue(),
                     jc.name,
                 ),
-                VzData::JavaMethod(jm) => write!(f, "{}{}",
+                VzData::JavaMethod(jm) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", jm.base.data_type.to_string()).blue(),
                     jm.name,
                 ),
-                VzData::ObjCClass(oc) => write!(f, "{}{}",
+                VzData::ObjCClass(oc) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", oc.base.data_type.to_string()).blue(),
                     oc.name,
                 ),
-                VzData::ObjCMethod(om) => write!(f, "{}{}",
+                VzData::ObjCMethod(om) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", om.base.data_type.to_string()).blue(),
                     om.name,
                 ),
-                VzData::Thread(t) => write!(f, "{}{}",
+                VzData::Thread(t) => write!(
+                    f,
+                    "{}{}",
                     format!("{}:", t.base.data_type.to_string()).blue(),
                     format!("{}", t.id).yellow(),
                 ),
@@ -63,9 +83,7 @@ impl fmt::Display for Navigator {
 
 impl Navigator {
     pub fn new() -> Self {
-        Navigator {
-            data: None,
-        }
+        Navigator { data: None }
     }
     pub fn select(&mut self, data: &VzData) {
         self.data = Some(data.clone());
@@ -83,19 +101,19 @@ impl Navigator {
                 VzData::Module(m) => {
                     m.address += offset;
                     *data = VzData::Pointer(m.to_pointer());
-                },
+                }
                 VzData::Range(r) => {
                     r.address += offset;
                     *data = VzData::Pointer(r.to_pointer());
-                },
+                }
                 VzData::Function(func) => {
                     func.address += offset;
                     *data = VzData::Pointer(func.to_pointer());
-                },
+                }
                 VzData::Variable(v) => {
                     v.address += offset;
                     *data = VzData::Pointer(v.to_pointer());
-                },
+                }
                 _ => {}
             }
         }
@@ -107,19 +125,19 @@ impl Navigator {
                 VzData::Module(m) => {
                     m.address -= offset;
                     *data = VzData::Pointer(m.to_pointer());
-                },
+                }
                 VzData::Range(r) => {
                     r.address -= offset;
                     *data = VzData::Pointer(r.to_pointer());
-                },
+                }
                 VzData::Function(func) => {
                     func.address -= offset;
                     *data = VzData::Pointer(func.to_pointer());
-                },
+                }
                 VzData::Variable(v) => {
                     v.address -= offset;
                     *data = VzData::Pointer(v.to_pointer());
-                },
+                }
                 _ => {}
             }
         }
@@ -131,19 +149,19 @@ impl Navigator {
                 VzData::Module(m) => {
                     m.address = address;
                     *data = VzData::Pointer(m.to_pointer());
-                },
+                }
                 VzData::Range(r) => {
                     r.address = address;
                     *data = VzData::Pointer(r.to_pointer());
-                },
+                }
                 VzData::Function(func) => {
                     func.address = address;
                     *data = VzData::Pointer(func.to_pointer());
-                },
+                }
                 VzData::Variable(v) => {
                     v.address = address;
                     *data = VzData::Pointer(v.to_pointer());
-                },
+                }
                 _ => {}
             }
         } else {

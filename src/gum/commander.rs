@@ -2,12 +2,20 @@
 use crate::gum::{
     filter::parse_filter_string,
     list::{list_functions, list_ranges, list_variables},
-    memory::{get_address_from_data, parse_value_type, read_memory_by_type, write_memory_by_type},
+    memory::{
+        get_address_from_data, parse_value_type, read_memory_by_type, view_memory,
+        write_memory_by_type,
+    },
 };
 use crate::util::logger;
 use crossterm::style::Stylize;
 
-use super::{list::list_modules, navigator::Navigator, store::Store, vzdata::{VzData, VzValueType}};
+use super::{
+    list::list_modules,
+    navigator::Navigator,
+    store::Store,
+    vzdata::{VzData, VzValueType},
+};
 use frida::Script;
 use regex::Regex;
 use std::{fmt, vec};
@@ -435,6 +443,18 @@ impl<'a, 'b> Commander<'a, 'b> {
                     vec![],
                     Some(|c, a| Commander::write(c, a)),
                 ),
+                Command::new(
+                    "view",
+                    "View memory in hexdump format or by type",
+                    vec!["v"],
+                    vec![
+                        CommandArg::optional("address", "Address (0x100), store selector (field:5, lib:3), or navigator data"),
+                        CommandArg::optional("size", "Size in bytes (default: 256)"),
+                        CommandArg::optional("type", "Data type (byte, short, int, long, float, double, string, bytes, pointer)"),
+                    ],
+                    vec![],
+                    Some(|c, a| Commander::view(c, a)),
+                ),
             ],
         }
     }
@@ -770,17 +790,11 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     fn parse_number(s: &str) -> Result<u64, String> {
-        if s.starts_with("0x") || s.starts_with("0X") {
-            u64::from_str_radix(&s[2..], 16).map_err(|_| format!("Invalid hex number: {}", s))
-        } else {
-            s.parse::<u64>()
-                .map_err(|_| format!("Invalid number: {}", s))
-        }
+        crate::util::format::parse_hex_or_decimal(s)
     }
 
     fn parse_usize(s: &str) -> Result<usize, String> {
-        s.parse::<usize>()
-            .map_err(|_| format!("Invalid number: {}", s))
+        crate::util::format::parse_hex_or_decimal_usize(s)
     }
 
     fn add(&mut self, args: &[&str]) -> bool {
@@ -1233,27 +1247,34 @@ impl<'a, 'b> Commander<'a, 'b> {
                         return true;
                     }
                 };
-                let vtype = args.get(1).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                let vtype = args
+                    .get(1)
+                    .and_then(|s| parse_value_type(s).ok())
+                    .unwrap_or(VzValueType::Byte);
                 (addr, vtype)
             }
-            Err(_) => {
-                match Self::parse_number(&arg0) {
-                    Ok(addr) => {
-                        let vtype = args.get(1).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
-                        (addr, vtype)
-                    }
-                    Err(e) => {
-                        logger::error(&format!("Invalid address: {}", e));
-                        return true;
-                    }
+            Err(_) => match Self::parse_number(&arg0) {
+                Ok(addr) => {
+                    let vtype = args
+                        .get(1)
+                        .and_then(|s| parse_value_type(s).ok())
+                        .unwrap_or(VzValueType::Byte);
+                    (addr, vtype)
                 }
-            }
+                Err(e) => {
+                    logger::error(&format!("Invalid address: {}", e));
+                    return true;
+                }
+            },
         };
 
-        let length = args.get(2).and_then(|s| s.parse::<usize>().ok()).unwrap_or(16);
+        let length = args
+            .get(2)
+            .and_then(|s| crate::util::format::parse_hex_or_decimal_usize(s).ok())
+            .unwrap_or(16);
 
         // Perform read operation
-        match read_memory_by_type(&mut self.script, address, &value_type, Some(length)) {
+        match read_memory_by_type(&mut self.script, address, &value_type, Some(length), true) {
             Ok(result) => {
                 println!(
                     "{} {} {} = {}",
@@ -1300,21 +1321,25 @@ impl<'a, 'b> Commander<'a, 'b> {
                         return true;
                     }
                 };
-                let vtype = args.get(2).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
+                let vtype = args
+                    .get(2)
+                    .and_then(|s| parse_value_type(s).ok())
+                    .unwrap_or(VzValueType::Byte);
                 (addr, args[1].to_string(), vtype)
             }
-            Err(_) => {
-                match Self::parse_number(&arg0) {
-                    Ok(addr) => {
-                        let vtype = args.get(2).map(|s| parse_value_type(s)).unwrap_or(VzValueType::Byte);
-                        (addr, args[1].to_string(), vtype)
-                    }
-                    Err(e) => {
-                        logger::error(&format!("Invalid address: {}", e));
-                        return true;
-                    }
+            Err(_) => match Self::parse_number(&arg0) {
+                Ok(addr) => {
+                    let vtype = args
+                        .get(2)
+                        .and_then(|s| parse_value_type(s).ok())
+                        .unwrap_or(VzValueType::Byte);
+                    (addr, args[1].to_string(), vtype)
                 }
-            }
+                Err(e) => {
+                    logger::error(&format!("Invalid address: {}", e));
+                    return true;
+                }
+            },
         };
 
         // Perform write operation
@@ -1340,6 +1365,115 @@ impl<'a, 'b> Commander<'a, 'b> {
         match self.script.list_exports() {
             Ok(exports) => println!("{:?}", &exports),
             Err(e) => logger::error(&format!("Failed to list exports: {}", e)),
+        }
+        true
+    }
+
+    fn view(&mut self, args: &[&str]) -> bool {
+        let arg0 = args.get(0).map(|s| s.to_string()).unwrap_or_default();
+        let res = self.selector(arg0.as_str());
+        let (address, size, value_type) = match res {
+            Ok(data) => {
+                if data.is_empty() {
+                    match self.navigator.get_data() {
+                        Some(nav_data) => {
+                            let addr = match get_address_from_data(nav_data) {
+                                Some(addr) if addr != 0 => addr,
+                                _ => {
+                                    logger::error("No valid address found in navigator data");
+                                    return true;
+                                }
+                            };
+                            let size = args
+                                .get(0)
+                                .and_then(|s| {
+                                    crate::util::format::parse_hex_or_decimal_usize(s).ok()
+                                })
+                                .unwrap_or(256);
+                            let vtype = args
+                                .get(1)
+                                .and_then(|s| parse_value_type(s).ok())
+                                .unwrap_or(VzValueType::Byte);
+                            (addr, size, vtype)
+                        }
+                        None => {
+                            logger::error("No data selected and navigator is empty");
+                            return true;
+                        }
+                    }
+                } else {
+                    let addr = match get_address_from_data(data[0])
+                        .ok_or_else(|| "No valid address found in selected data".to_string())
+                        .and_then(|addr| {
+                            if addr == 0 {
+                                Err("Address cannot be zero".to_string())
+                            } else {
+                                Ok(addr)
+                            }
+                        }) {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            logger::error(&e);
+                            return true;
+                        }
+                    };
+                    let size = args
+                        .get(1)
+                        .and_then(|s| crate::util::format::parse_hex_or_decimal_usize(s).ok())
+                        .unwrap_or(256);
+                    let vtype = args
+                        .get(2)
+                        .and_then(|s| parse_value_type(s).ok())
+                        .unwrap_or(VzValueType::Byte);
+                    (addr, size, vtype)
+                }
+            }
+            Err(_) => match Self::parse_number(&arg0) {
+                Ok(addr) => {
+                    let size = args
+                        .get(1)
+                        .and_then(|s| crate::util::format::parse_hex_or_decimal_usize(s).ok())
+                        .unwrap_or(256);
+                    let vtype = args
+                        .get(2)
+                        .and_then(|s| parse_value_type(s).ok())
+                        .unwrap_or(VzValueType::Byte);
+                    (addr, size, vtype)
+                }
+                Err(_) => match self.navigator.get_data() {
+                    Some(nav_data) => {
+                        let addr = match get_address_from_data(nav_data) {
+                            Some(addr) if addr != 0 => addr,
+                            _ => {
+                                logger::error("No valid address found in navigator data");
+                                return true;
+                            }
+                        };
+                        let size = args
+                            .get(0)
+                            .and_then(|s| crate::util::format::parse_hex_or_decimal_usize(s).ok())
+                            .unwrap_or(256);
+                        let vtype = args
+                            .get(1)
+                            .and_then(|s| parse_value_type(s).ok())
+                            .unwrap_or(VzValueType::Byte);
+                        (addr, size, vtype)
+                    }
+                    None => {
+                        logger::error("Invalid address and no navigator data available");
+                        return true;
+                    }
+                },
+            },
+        };
+
+        match view_memory(&mut self.script, address, &value_type, size) {
+            Ok(result) => {
+                println!("{}", result);
+            }
+            Err(e) => {
+                logger::error(&format!("Memory view error: {}", e));
+            }
         }
         true
     }

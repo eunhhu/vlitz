@@ -2,7 +2,7 @@
 
 use super::{
     filter::{FilterOperator, FilterSegment, FilterValue, LogicalOperator},
-    vzdata::{VzData},
+    vzdata::VzData,
 };
 use crossterm::style::Stylize;
 use std::fmt::Debug; // Required for format!("{:?}") on VzDataType

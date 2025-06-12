@@ -6,7 +6,7 @@ mod ps;
 
 use crate::{
     gum::attach,
-    util::{highlight, lengthed},
+    util::{format::lengthed, highlight},
 };
 use actions::get_device;
 use clap::{CommandFactory, Parser};

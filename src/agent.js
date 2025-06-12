@@ -1,89 +1,56 @@
 function filtered(arr, filter) {
     if (!filter || !Array.isArray(filter) || filter.length === 0) {
-        return [...arr];
+        return arr;
     }
 
     const operators = {
-        '=': (a, b) => a == b, // Using loose equality as per original
+        '=': (a, b) => a == b,
         '!=': (a, b) => a != b,
         '<': (a, b) => {
-            const numA = Number(a);
-            const numB = Number(b);
-            if (typeof a === 'number' && typeof b === 'number') {
-                return a < b;
-            } else if (!isNaN(numA) && !isNaN(numB)) {
-                return numA < numB;
-            }
-            return String(a) < String(b);
+            if (typeof a === 'number' && typeof b === 'number') return a < b;
+            const numA = Number(a), numB = Number(b);
+            return !isNaN(numA) && !isNaN(numB) ? numA < numB : String(a) < String(b);
         },
         '>': (a, b) => {
-            const numA = Number(a);
-            const numB = Number(b);
-            if (typeof a === 'number' && typeof b === 'number') {
-                return a > b;
-            } else if (!isNaN(numA) && !isNaN(numB)) {
-                return numA > numB;
-            }
-            return String(a) > String(b);
+            if (typeof a === 'number' && typeof b === 'number') return a > b;
+            const numA = Number(a), numB = Number(b);
+            return !isNaN(numA) && !isNaN(numB) ? numA > numB : String(a) > String(b);
         },
         '<=': (a, b) => {
-            const numA = Number(a);
-            const numB = Number(b);
-            if (typeof a === 'number' && typeof b === 'number') {
-                return a <= b;
-            } else if (!isNaN(numA) && !isNaN(numB)) {
-                return numA <= numB;
-            }
-            return String(a) <= String(b);
+            if (typeof a === 'number' && typeof b === 'number') return a <= b;
+            const numA = Number(a), numB = Number(b);
+            return !isNaN(numA) && !isNaN(numB) ? numA <= numB : String(a) <= String(b);
         },
         '>=': (a, b) => {
-            const numA = Number(a);
-            const numB = Number(b);
-            if (typeof a === 'number' && typeof b === 'number') {
-                return a >= b;
-            } else if (!isNaN(numA) && !isNaN(numB)) {
-                return numA >= numB;
-            }
-            return String(a) >= String(b);
+            if (typeof a === 'number' && typeof b === 'number') return a >= b;
+            const numA = Number(a), numB = Number(b);
+            return !isNaN(numA) && !isNaN(numB) ? numA >= numB : String(a) >= String(b);
         },
         ':': (a, b) => String(a).toLowerCase().includes(String(b).toLowerCase()),
-        '!:': (a, b) => !String(a).toLowerCase().includes(String(b).toLowerCase()),
+        '!:': (a, b) => !String(a).toLowerCase().includes(String(b).toLowerCase())
     };
 
     const evaluate = (item, condition) => {
-        if (!Array.isArray(condition) || condition.length < 3) {
-            console.warn(`Invalid condition format: ${JSON.stringify(condition)}. Treating as true.`);
-            return true;
-        }
-
+        if (!Array.isArray(condition) || condition.length < 3) return true;
         const [key, op, value] = condition;
-        const itemValue = item[key];
         const operator = operators[op];
-
-        if (!operator) {
-            console.warn(`Unknown operator: ${op}. Treating as true.`);
-            return true;
-        }
-
-        return operator(itemValue, value);
+        return operator ? operator(item[key], value) : true;
     };
 
-    let finalResults = new Set();
-    let currentAndBlock = [...arr];
-    for (let i = 0; i < filter.length; i++) {
-        const item = filter[i];
-
-        if (item === 'and') {
-        } else if (item === 'or') {
-            currentAndBlock.forEach(resultItem => finalResults.add(resultItem));
-            currentAndBlock = [...arr]; 
+    const finalResults = new Set();
+    let currentAndBlock = arr;
+    
+    for (const item of filter) {
+        if (item === 'and') continue;
+        if (item === 'or') {
+            currentAndBlock.forEach(r => finalResults.add(r));
+            currentAndBlock = arr;
         } else if (Array.isArray(item) && item.length >= 3) {
             currentAndBlock = currentAndBlock.filter(v => evaluate(v, item));
-        } else {
-            console.warn(`Malformed filter element encountered: ${JSON.stringify(item)}`);
         }
     }
-    currentAndBlock.forEach(resultItem => finalResults.add(resultItem));
+    
+    currentAndBlock.forEach(r => finalResults.add(r));
     return Array.from(finalResults);
 }
 
@@ -105,7 +72,7 @@ rpc.exports = {
     reader_float: a => ptr(a).readFloat(),
     reader_double: a => ptr(a).readDouble(),
     reader_string: (a, l = 8) => ptr(a).readCString(l),
-    reader_bytes: (a, l = 8) => Object.values(new Uint8Array(ptr(a).readByteArray(l))),
+    reader_bytes: (a, l = 8) => Array.from(new Uint8Array(ptr(a).readByteArray(l))),
     // writer
     writer_byte: (a, v) => ptr(a).writeS8(v),
     writer_ubyte: (a, v) => ptr(a).writeU8(v),
@@ -122,13 +89,13 @@ rpc.exports = {
     // instruction
     instruction: (a) => Instruction.parse(ptr(a)),
     // list
-    list_modules: (filter) => filtered(Process.enumerateModules().map(m => {
-        return {
+    list_modules: (filter) => filtered(
+        Process.enumerateModules().map(m => ({
             name: m.name,
             address: m.base.toString(),
             size: m.size
-        }
-    }), filter),
+        })), filter
+    ),
     list_ranges: (protect = '---', filter) => filtered(Process.enumerateRanges(protect).map(m => {
         return {
             address: m.base.toString(),
@@ -215,5 +182,30 @@ rpc.exports = {
                 name: c
             }
         }), filter) : [];
+    },
+    // memory protection - using Process.findRangeByAddress for efficiency
+    check_read_protection: (a) => {
+        try {
+            const range = Process.findRangeByAddress(ptr(a));
+            return range ? range.protection.includes('r') : false;
+        } catch (e) {
+            return false;
+        }
+    },
+    check_write_protection: (a) => {
+        try {
+            const range = Process.findRangeByAddress(ptr(a));
+            return range ? range.protection.includes('w') : false;
+        } catch (e) {
+            return false;
+        }
+    },
+    get_memory_protection: (a) => {
+        try {
+            const range = Process.findRangeByAddress(ptr(a));
+            return range ? range.protection : null;
+        } catch (e) {
+            return null;
+        }
     }
 }
