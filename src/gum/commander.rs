@@ -21,14 +21,14 @@ use regex::Regex;
 use std::{fmt, vec};
 
 #[derive(Debug)]
-struct CommandArg {
+pub(crate) struct CommandArg {
     name: String,
     description: String,
     required: bool,
 }
 
 impl CommandArg {
-    fn new(name: &str, description: &str, required: bool) -> Self {
+    pub(crate) fn new(name: &str, description: &str, required: bool) -> Self {
         Self {
             name: name.to_string(),
             description: description.to_string(),
@@ -36,11 +36,11 @@ impl CommandArg {
         }
     }
 
-    fn required(name: &str, description: &str) -> Self {
+    pub(crate) fn required(name: &str, description: &str) -> Self {
         Self::new(name, description, true)
     }
 
-    fn optional(name: &str, description: &str) -> Self {
+    pub(crate) fn optional(name: &str, description: &str) -> Self {
         Self::new(name, description, false)
     }
 }
@@ -55,9 +55,9 @@ impl fmt::Display for CommandArg {
     }
 }
 
-type CommandHandler = fn(&mut Commander, &[&str]) -> bool;
+pub(crate) type CommandHandler = fn(&mut Commander, &[&str]) -> bool;
 
-struct SubCommand {
+pub(crate) struct SubCommand {
     name: String,
     aliases: Vec<String>,
     description: String,
@@ -66,7 +66,7 @@ struct SubCommand {
 }
 
 impl SubCommand {
-    fn new(name: &str, description: &str, args: Vec<CommandArg>, execute: CommandHandler) -> Self {
+    pub(crate) fn new(name: &str, description: &str, args: Vec<CommandArg>, execute: CommandHandler) -> Self {
         Self {
             name: name.to_string(),
             aliases: Vec::new(),
@@ -76,13 +76,13 @@ impl SubCommand {
         }
     }
 
-    fn alias(mut self, alias: &str) -> Self {
+    pub(crate) fn alias(mut self, alias: &str) -> Self {
         self.aliases.push(alias.to_string());
         self
     }
 }
 
-struct Command {
+pub(crate) struct Command {
     command: String,
     description: String,
     aliases: Vec<String>,
@@ -92,7 +92,7 @@ struct Command {
 }
 
 impl Command {
-    fn new(
+    pub(crate) fn new(
         command: &str,
         description: &str,
         aliases: Vec<&str>,
@@ -136,326 +136,7 @@ impl<'a, 'b> Commander<'a, 'b> {
             field: Store::new("Field".to_string()),
             lib: Store::new("Lib".to_string()),
             navigator: Navigator::new(),
-            commands: vec![
-                Command::new(
-                    "debug",
-                    "Debug functions",
-                    vec!["d"],
-                    vec![],
-                    vec![SubCommand::new("exports", "List exports", vec![], |c, a| {
-                        Commander::debug_exports(c, a)
-                    })
-                    .alias("e")],
-                    None,
-                ),
-                Command::new(
-                    "help",
-                    "Show this help message",
-                    vec!["h"],
-                    vec![CommandArg::optional("command", "Command to show help for")],
-                    vec![],
-                    Some(|c, a| Commander::help(c, a)),
-                ),
-                Command::new(
-                    "exit",
-                    "Exit the session",
-                    vec!["quit", "q"],
-                    vec![],
-                    vec![],
-                    Some(|c, a| Commander::exit(c, a)),
-                ),
-                Command::new(
-                    "select",
-                    "Select data",
-                    vec!["sel", "sl"],
-                    vec![CommandArg::required("selector", "Selector")],
-                    vec![],
-                    Some(|c, a| Commander::select(c, a)),
-                ),
-                Command::new(
-                    "deselect",
-                    "Deselect data",
-                    vec!["desel", "dsl"],
-                    vec![],
-                    vec![],
-                    Some(|c, a| Commander::deselect(c, a)),
-                ),
-                Command::new(
-                    "add",
-                    "Add offset to selected data",
-                    vec!["+"],
-                    vec![CommandArg::required("offset", "Offset")],
-                    vec![],
-                    Some(|c, a| Commander::add(c, a)),
-                ),
-                Command::new(
-                    "sub",
-                    "Subtract offset from selected data",
-                    vec!["-"],
-                    vec![CommandArg::required("offset", "Offset")],
-                    vec![],
-                    Some(|c, a| Commander::sub(c, a)),
-                ),
-                Command::new(
-                    "goto",
-                    "Go to address",
-                    vec!["go", ":"],
-                    vec![CommandArg::required("address", "Address")],
-                    vec![],
-                    Some(|c, a| Commander::goto(c, a)),
-                ),
-                Command::new(
-                    "field",
-                    "Field manipulation commands.",
-                    vec!["fld", "f"],
-                    vec![CommandArg::optional("page", "Page number")],
-                    vec![
-                        SubCommand::new(
-                            "list",
-                            "List fields with optional page number",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::field_list(c, a),
-                        )
-                        .alias("ls")
-                        .alias("l"),
-                        SubCommand::new(
-                            "next",
-                            "Go to next page of fields",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::field_next(c, a),
-                        )
-                        .alias("n"),
-                        SubCommand::new(
-                            "prev",
-                            "Go to previous page of fields",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::field_prev(c, a),
-                        )
-                        .alias("p"),
-                        SubCommand::new(
-                            "sort",
-                            "Sort fields by name",
-                            vec![CommandArg::optional("type", "Sort type [addr]")],
-                            |c, a| Commander::field_sort(c, a),
-                        )
-                        .alias("s"),
-                        SubCommand::new(
-                            "move",
-                            "Move fields",
-                            vec![
-                                CommandArg::required("from", "Index of data"),
-                                CommandArg::required("to", "Index of data"),
-                            ],
-                            |c, a| Commander::field_move(c, a),
-                        )
-                        .alias("mv"),
-                        SubCommand::new(
-                            "remove",
-                            "Remove data from field",
-                            vec![
-                                CommandArg::required("index", "Index of data"),
-                                CommandArg::optional(
-                                    "count",
-                                    "Count of data to remove (default: 1)",
-                                ),
-                            ],
-                            |c, a| Commander::field_remove(c, a),
-                        )
-                        .alias("rm")
-                        .alias("del")
-                        .alias("delete"),
-                        SubCommand::new("clear", "Clear all fields", vec![], |c, a| {
-                            Commander::field_clear(c, a)
-                        })
-                        .alias("cls")
-                        .alias("clr")
-                        .alias("cl")
-                        .alias("c"),
-                        SubCommand::new(
-                            "filter",
-                            "Filter fields",
-                            vec![CommandArg::required(
-                                "filter",
-                                "Filter as filter expression",
-                            )],
-                            |c, a| Commander::field_filter(c, a),
-                        )
-                        .alias("f")
-                        .alias("filter"),
-                    ],
-                    Some(|c, a| Commander::field_list(c, a)),
-                ),
-                Command::new(
-                    "save",
-                    "Save data from field",
-                    vec!["sv"],
-                    vec![CommandArg::required("selector", "Selector from field")],
-                    vec![],
-                    Some(|c, a| Commander::lib_save(c, a)),
-                ),
-                Command::new(
-                    "lib",
-                    "Library manipulation commands.",
-                    vec!["lb", "l"],
-                    vec![CommandArg::optional("page", "Page number")],
-                    vec![
-                        SubCommand::new(
-                            "list",
-                            "List libraries with optional page number",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::lib_list(c, a),
-                        )
-                        .alias("ls")
-                        .alias("l"),
-                        SubCommand::new(
-                            "next",
-                            "Go to next page of libraries",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::lib_next(c, a),
-                        )
-                        .alias("n"),
-                        SubCommand::new(
-                            "prev",
-                            "Go to previous page of libraries",
-                            vec![CommandArg::optional("page", "Page number")],
-                            |c, a| Commander::lib_prev(c, a),
-                        )
-                        .alias("p"),
-                        SubCommand::new(
-                            "sort",
-                            "Sort libraries by name",
-                            vec![CommandArg::optional("type", "Sort type [addr]")],
-                            |c, a| Commander::lib_sort(c, a),
-                        )
-                        .alias("s"),
-                        SubCommand::new(
-                            "move",
-                            "Move data from one library to another",
-                            vec![
-                                CommandArg::required("from", "Index of data"),
-                                CommandArg::required("to", "Index of data"),
-                            ],
-                            |c, a| Commander::lib_move(c, a),
-                        )
-                        .alias("mv"),
-                        SubCommand::new(
-                            "remove",
-                            "Remove data from library",
-                            vec![
-                                CommandArg::required("index", "Index of data"),
-                                CommandArg::optional(
-                                    "count",
-                                    "Count of data to remove (default: 1)",
-                                ),
-                            ],
-                            |c, a| Commander::lib_remove(c, a),
-                        )
-                        .alias("rm")
-                        .alias("del")
-                        .alias("delete"),
-                        SubCommand::new("clear", "Clear all data", vec![], |c, a| {
-                            Commander::lib_clear(c, a)
-                        })
-                        .alias("cls")
-                        .alias("clr")
-                        .alias("cl")
-                        .alias("c"),
-                        SubCommand::new(
-                            "filter",
-                            "Filter libraries",
-                            vec![CommandArg::required("filter", "Filter expression")],
-                            |c, a| Commander::lib_filter(c, a),
-                        )
-                        .alias("f")
-                        .alias("filter"),
-                    ],
-                    Some(|c, a| Commander::lib_list(c, a)),
-                ),
-                Command::new(
-                    "list",
-                    "List all data",
-                    vec!["ls"],
-                    vec![],
-                    vec![
-                        SubCommand::new(
-                            "modules",
-                            "List all modules",
-                            vec![CommandArg::optional("filter", "Filter modules")],
-                            |c, a| Commander::list_modules(c, a),
-                        )
-                        .alias("mods")
-                        .alias("md")
-                        .alias("m"),
-                        SubCommand::new(
-                            "ranges",
-                            "List all ranges",
-                            vec![CommandArg::optional("filter", "Filter ranges")],
-                            |c, a| Commander::list_ranges(c, a),
-                        )
-                        .alias("ranges")
-                        .alias("rngs")
-                        .alias("rng")
-                        .alias("r"),
-                        SubCommand::new(
-                            "functions",
-                            "List all functions",
-                            vec![CommandArg::optional("filter", "Filter functions")],
-                            |c, a| Commander::list_functions(c, a),
-                        )
-                        .alias("funcs")
-                        .alias("fns")
-                        .alias("fn")
-                        .alias("f"),
-                        SubCommand::new(
-                            "variables",
-                            "List all variables",
-                            vec![CommandArg::optional("filter", "Filter variables")],
-                            |c, a| Commander::list_variables(c, a),
-                        )
-                        .alias("vars")
-                        .alias("vrs")
-                        .alias("vr")
-                        .alias("v"),
-                    ],
-                    None,
-                ),
-                Command::new(
-                    "read",
-                    "Read data from memory",
-                    vec!["r"],
-                    vec![
-                        CommandArg::optional("address", "Address (0x100), store selector (field:5, lib:3), or navigator data"),
-                        CommandArg::optional("type", "Data type (byte, short, int, long, float, double, string, bytes, pointer)"),
-                        CommandArg::optional("length", "Length for bytes/array types (default: 16)"),
-                    ],
-                    vec![],
-                    Some(|c, a| Commander::read(c, a)),
-                ),
-                Command::new(
-                    "write",
-                    "Write data to memory",
-                    vec!["w"],
-                    vec![
-                        CommandArg::optional("address", "Address (0x100), store selector (field:5, lib:3), or navigator data"),
-                        CommandArg::required("value", "Value to write"),
-                        CommandArg::optional("type", "Data type (byte, short, int, long, float, double, string, bytes, pointer)"),
-                    ],
-                    vec![],
-                    Some(|c, a| Commander::write(c, a)),
-                ),
-                Command::new(
-                    "view",
-                    "View memory in hexdump format or by type",
-                    vec!["v"],
-                    vec![
-                        CommandArg::optional("address", "Address (0x100), store selector (field:5, lib:3), or navigator data"),
-                        CommandArg::optional("size", "Size in bytes (default: 256)"),
-                        CommandArg::optional("type", "Data type (byte, short, int, long, float, double, string, bytes, pointer)"),
-                    ],
-                    vec![],
-                    Some(|c, a| Commander::view(c, a)),
-                ),
-            ],
+            commands: crate::gum::commands::build_all(),
         }
     }
 
@@ -503,7 +184,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn help(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn help(&mut self, args: &[&str]) -> bool {
         if !args.is_empty() {
             let command = self
                 .commands
@@ -690,7 +371,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
     }
 
-    fn exit(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn exit(&mut self, _args: &[&str]) -> bool {
         println!("{}", "Exiting...".yellow());
         false
     }
@@ -763,7 +444,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
     }
 
-    fn select(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn select(&mut self, args: &[&str]) -> bool {
         let selector = args.get(0).unwrap_or(&"");
         let result = self.selector(selector).map_err(|e| {
             println!("Failed to select data: {}", e);
@@ -784,7 +465,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
     }
 
-    fn deselect(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn deselect(&mut self, _args: &[&str]) -> bool {
         self.navigator.deselect();
         true
     }
@@ -797,7 +478,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         crate::util::format::parse_hex_or_decimal_usize(s)
     }
 
-    fn add(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn add(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(offset)) => self.navigator.add(offset),
             Some(Err(e)) => logger::error(&format!("Invalid offset: {}", e)),
@@ -806,7 +487,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn sub(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn sub(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(offset)) => self.navigator.sub(offset),
             Some(Err(e)) => logger::error(&format!("Invalid offset: {}", e)),
@@ -815,7 +496,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn goto(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn goto(&mut self, args: &[&str]) -> bool {
         match args.get(0).map(|s| Self::parse_number(s)) {
             Some(Ok(addr)) => self.navigator.goto(addr),
             Some(Err(e)) => logger::error(&format!("Invalid address: {}", e)),
@@ -824,7 +505,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_list(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_list(&mut self, args: &[&str]) -> bool {
         match args.get(0) {
             Some(v) => match Self::parse_usize(v) {
                 Ok(p) => println!("{}", self.field.to_string(Some(p.saturating_sub(1)))),
@@ -835,7 +516,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_next(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_next(&mut self, args: &[&str]) -> bool {
         let (current_page, total_pages) = self.field.get_page_info();
         if current_page != total_pages {
             match args.get(0) {
@@ -850,7 +531,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_prev(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_prev(&mut self, args: &[&str]) -> bool {
         let (current_page, _) = self.field.get_page_info();
         if current_page != 1 {
             match args.get(0) {
@@ -865,7 +546,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_sort(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_sort(&mut self, args: &[&str]) -> bool {
         if let Some(sort_by) = args.get(0) {
             self.field.sort(Some(sort_by));
         }
@@ -873,7 +554,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_move(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_move(&mut self, args: &[&str]) -> bool {
         let from_res = args
             .get(0)
             .ok_or("Missing from index")
@@ -894,7 +575,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_remove(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_remove(&mut self, args: &[&str]) -> bool {
         let index_res = args
             .get(0)
             .ok_or("Missing index")
@@ -916,13 +597,13 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn field_clear(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn field_clear(&mut self, _args: &[&str]) -> bool {
         self.field.clear_data();
         println!("{}", self.field.to_string(None));
         true
     }
 
-    fn field_filter(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn field_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
         let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
             logger::error(&format!("Failed to parse filter string: {}", filter_arg));
@@ -933,7 +614,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_list(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_list(&mut self, args: &[&str]) -> bool {
         match args.get(0) {
             Some(v) => match Self::parse_usize(v) {
                 Ok(p) => println!("{}", self.lib.to_string(Some(p.saturating_sub(1)))),
@@ -944,7 +625,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_next(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_next(&mut self, args: &[&str]) -> bool {
         let (current_page, total_pages) = self.lib.get_page_info();
         if current_page != total_pages {
             match args.get(0) {
@@ -959,7 +640,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_prev(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_prev(&mut self, args: &[&str]) -> bool {
         let (current_page, _) = self.lib.get_page_info();
         if current_page != 1 {
             match args.get(0) {
@@ -974,7 +655,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_sort(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_sort(&mut self, args: &[&str]) -> bool {
         if let Some(sort_by) = args.get(0) {
             self.lib.sort(Some(sort_by));
         }
@@ -982,7 +663,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_save(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_save(&mut self, args: &[&str]) -> bool {
         let datas_res = if let Some(sel) = args.get(0) {
             self.field.get_data_by_selection(sel)
         } else {
@@ -1042,7 +723,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_move(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_move(&mut self, args: &[&str]) -> bool {
         let from_res = args
             .get(0)
             .ok_or("Missing from index")
@@ -1063,7 +744,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_remove(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_remove(&mut self, args: &[&str]) -> bool {
         let index_res = args
             .get(0)
             .ok_or("Missing index")
@@ -1085,13 +766,13 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn lib_clear(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn lib_clear(&mut self, _args: &[&str]) -> bool {
         self.lib.clear_data();
         println!("{}", self.lib.to_string(None));
         true
     }
 
-    fn lib_filter(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn lib_filter(&mut self, args: &[&str]) -> bool {
         let filter_arg = args.get(0).map_or("", |v| v);
         let filter = parse_filter_string(filter_arg).unwrap_or_else(|_| {
             logger::error(&format!("Failed to parse filter string: {}", filter_arg));
@@ -1102,7 +783,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn list_modules(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn list_modules(&mut self, _args: &[&str]) -> bool {
         let filter = _args.get(0).map(|s| s.to_string());
         let modules = list_modules(&mut self.script, filter.as_deref())
             .unwrap_or(vec![])
@@ -1115,7 +796,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn list_ranges(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn list_ranges(&mut self, _args: &[&str]) -> bool {
         let protect = _args.get(0).map(|s| s.to_string());
         let filter = _args.get(1).map(|s| s.to_string());
         let ranges = list_ranges(&mut self.script, protect.as_deref(), filter.as_deref())
@@ -1129,7 +810,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn list_functions(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn list_functions(&mut self, _args: &[&str]) -> bool {
         let filter;
         let arg0 = _args.get(0).map(|s| s.to_string()).unwrap_or_default();
         let res = self.selector(arg0.as_str());
@@ -1176,7 +857,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn list_variables(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn list_variables(&mut self, _args: &[&str]) -> bool {
         let filter;
         let arg0 = _args.get(0).map(|s| s.to_string()).unwrap_or_default();
         let res = self.selector(arg0.as_str());
@@ -1223,7 +904,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn read(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn read(&mut self, args: &[&str]) -> bool {
         let arg0 = args.get(0).map(|s| s.to_string()).unwrap_or_default();
         let res = self.selector(arg0.as_str());
         let (address, value_type) = match res {
@@ -1291,7 +972,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn write(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn write(&mut self, args: &[&str]) -> bool {
         // Parse arguments: [address] <value> [type]
         if args.len() < 1 {
             logger::error("Write command requires at least value arguments");
@@ -1361,7 +1042,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn debug_exports(&mut self, _args: &[&str]) -> bool {
+    pub(crate) fn debug_exports(&mut self, _args: &[&str]) -> bool {
         match self.script.list_exports() {
             Ok(exports) => println!("{:?}", &exports),
             Err(e) => logger::error(&format!("Failed to list exports: {}", e)),
@@ -1369,7 +1050,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         true
     }
 
-    fn view(&mut self, args: &[&str]) -> bool {
+    pub(crate) fn view(&mut self, args: &[&str]) -> bool {
         let arg0 = args.get(0).map(|s| s.to_string()).unwrap_or_default();
         let res = self.selector(arg0.as_str());
         let (address, size, value_type) = match res {

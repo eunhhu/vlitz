@@ -9,6 +9,7 @@ pub mod memory;
 pub mod navigator;
 pub mod store;
 pub mod vzdata;
+pub mod commands;
 
 use std::process::exit;
 

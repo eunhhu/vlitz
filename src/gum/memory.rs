@@ -494,6 +494,25 @@ pub fn view_memory(
     ));
 
     let type_size = get_type_size(value_type);
+    let use_hex_view = matches!(
+        value_type,
+        VzValueType::Byte
+            | VzValueType::Int8
+            | VzValueType::UByte
+            | VzValueType::UInt8
+            | VzValueType::String
+            | VzValueType::Utf8
+            | VzValueType::Array
+            | VzValueType::Bytes
+    );
+
+    // Determine endianness once for this view when needed (single calibration read)
+    let mut little_endian = true;
+    if !use_hex_view && type_size > 1 {
+        if let Ok(det) = determine_endianness(script, addr, value_type, &bytes[..type_size]) {
+            little_endian = det;
+        }
+    }
 
     // Process bytes in 16-byte chunks
     for (chunk_idx, chunk) in bytes.chunks(16).enumerate() {
@@ -514,66 +533,51 @@ pub fn view_memory(
         let mut type_column = String::new();
         let mut offset = 0;
 
-        // Show hex bytes in fixed format for standard view
-        if *value_type == VzValueType::Byte || *value_type == VzValueType::UByte {
+        if use_hex_view {
             for (i, &byte) in chunk.iter().enumerate() {
                 if i < 16 {
                     let formatted_byte = format_hex_byte_with_color(byte);
                     type_column.push_str(&format!("{} ", formatted_byte));
                 }
             }
-            // Pad remaining bytes if chunk is less than 16 bytes
             for _ in chunk.len()..16 {
                 type_column.push_str("   ");
             }
         } else {
-            // Process values according to type size for other types
+            // Process values according to type size for other types, decoding locally from the buffer
             while offset < chunk.len() && offset < 16 {
                 if offset + type_size <= chunk.len() {
-                    let value_addr = current_addr + offset as u64;
-                    match read_memory_by_type(script, value_addr, value_type, None, false) {
-                        Ok(value) => {
-                            // Check if the value represents an inactive state
-                            let is_zero_value = is_zero_or_inactive_value(&value);
+                    let slice = &chunk[offset..offset + type_size];
+                    let value = decode_value_to_string_from_bytes(value_type, slice, little_endian);
 
-                            let formatted_value = match value_type {
-                                VzValueType::Float | VzValueType::Float32 => {
-                                    lengthed(&value, 3 * 4 - 1)
-                                }
-                                VzValueType::Double | VzValueType::Float64 => {
-                                    lengthed(&value, 3 * 8 - 1)
-                                }
-                                VzValueType::Short
-                                | VzValueType::UShort
-                                | VzValueType::Int16
-                                | VzValueType::UInt16 => lengthed(&value, 3 * 2 - 1),
-                                VzValueType::Int
-                                | VzValueType::UInt
-                                | VzValueType::Int32
-                                | VzValueType::UInt32 => lengthed(&value, 3 * 4 - 1),
-                                VzValueType::Long
-                                | VzValueType::ULong
-                                | VzValueType::Int64
-                                | VzValueType::UInt64 => lengthed(&value, 3 * 8 - 1),
-                                VzValueType::Pointer => lengthed(&value, 3 * 8 - 1),
-                                VzValueType::Bool | VzValueType::Boolean => lengthed(&value, 3 - 1),
-                                _ => lengthed(&value, 3 * 4 - 1), // Default to 4 bytes for other types
-                            };
+                    let is_zero_value = is_zero_or_inactive_value(&value);
+                    let formatted_value = match value_type {
+                        VzValueType::Float | VzValueType::Float32 => lengthed(&value, 3 * 4 - 1),
+                        VzValueType::Double | VzValueType::Float64 => lengthed(&value, 3 * 8 - 1),
+                        VzValueType::Short
+                        | VzValueType::UShort
+                        | VzValueType::Int16
+                        | VzValueType::UInt16 => lengthed(&value, 3 * 2 - 1),
+                        VzValueType::Int
+                        | VzValueType::UInt
+                        | VzValueType::Int32
+                        | VzValueType::UInt32 => lengthed(&value, 3 * 4 - 1),
+                        VzValueType::Long
+                        | VzValueType::ULong
+                        | VzValueType::Int64
+                        | VzValueType::UInt64 => lengthed(&value, 3 * 8 - 1),
+                        VzValueType::Pointer => lengthed(&value, 3 * 8 - 1),
+                        VzValueType::Bool | VzValueType::Boolean => lengthed(&value, 3 - 1),
+                        _ => lengthed(&value, 3 * 4 - 1),
+                    };
 
-                            let colored_value = if is_zero_value {
-                                formatted_value.dark_grey().to_string()
-                            } else {
-                                formatted_value.cyan().to_string()
-                            };
-
-                            type_column.push_str(&colored_value);
-                            type_column.push(' ');
-                        }
-                        Err(_) => {
-                            type_column.push_str(&"Error   ".red().to_string());
-                            type_column.push(' ');
-                        }
-                    }
+                    let colored_value = if is_zero_value {
+                        formatted_value.dark_grey().to_string()
+                    } else {
+                        formatted_value.cyan().to_string()
+                    };
+                    type_column.push_str(&colored_value);
+                    type_column.push(' ');
                     offset += type_size;
                 } else {
                     break;
@@ -581,7 +585,6 @@ pub fn view_memory(
             }
         }
 
-        // Fill remaining space to align with ASCII column (properly spaced)
         while type_column.len() < 48 {
             type_column.push(' ');
         }
@@ -605,7 +608,6 @@ pub fn view_memory(
             output.push_str(&ascii_char.to_string());
         }
 
-        // Pad remaining ASCII columns if chunk is less than 16 bytes
         for _ in chunk.len()..16 {
             output.push(' ');
         }
@@ -659,4 +661,211 @@ fn format_value_with_color(value: &str, is_inactive: bool) -> String {
 
 fn is_zero_or_inactive_value(value: &str) -> bool {
     value == "0" || value == "0.0" || value == "false" || value == "0x0000000000000000"
+}
+
+// Determine target endianness by comparing a single typed read with decoding the first value from the buffer.
+fn determine_endianness(
+    script: &mut Script,
+    addr: u64,
+    value_type: &VzValueType,
+    first: &[u8],
+) -> Result<bool, String> {
+    let type_size = get_type_size(value_type);
+    if first.len() < type_size || type_size <= 1 {
+        return Ok(true);
+    }
+
+    // Helper to safely copy the first N bytes into a fixed-size array
+    fn bytes_to_array<const N: usize>(slice: &[u8]) -> [u8; N] {
+        let mut arr = [0u8; N];
+        arr.copy_from_slice(&slice[..N]);
+        arr
+    }
+
+    let le = match value_type {
+        VzValueType::Short | VzValueType::Int16 => {
+            let typed = readshort(script, addr)?;
+            let arr = bytes_to_array::<2>(first);
+            let le = i16::from_le_bytes(arr);
+            let be = i16::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::UShort | VzValueType::UInt16 => {
+            let typed = readushort(script, addr)?;
+            let arr = bytes_to_array::<2>(first);
+            let le = u16::from_le_bytes(arr);
+            let be = u16::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::Int | VzValueType::Int32 => {
+            let typed = readint(script, addr)?;
+            let arr = bytes_to_array::<4>(first);
+            let le = i32::from_le_bytes(arr);
+            let be = i32::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::UInt | VzValueType::UInt32 => {
+            let typed = readuint(script, addr)?;
+            let arr = bytes_to_array::<4>(first);
+            let le = u32::from_le_bytes(arr);
+            let be = u32::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::Long | VzValueType::Int64 => {
+            let typed = readlong(script, addr)?;
+            let arr = bytes_to_array::<8>(first);
+            let le = i64::from_le_bytes(arr);
+            let be = i64::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::ULong | VzValueType::UInt64 | VzValueType::Pointer => {
+            let typed = readulong(script, addr)?;
+            let arr = bytes_to_array::<8>(first);
+            let le = u64::from_le_bytes(arr);
+            let be = u64::from_be_bytes(arr);
+            if le == typed {
+                true
+            } else if be == typed {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::Float | VzValueType::Float32 => {
+            let typed = readfloat(script, addr)?;
+            let arr = bytes_to_array::<4>(first);
+            let le = f32::from_le_bytes(arr).to_bits();
+            let be = f32::from_be_bytes(arr).to_bits();
+            let tb = typed.to_bits();
+            if le == tb {
+                true
+            } else if be == tb {
+                false
+            } else {
+                true
+            }
+        }
+        VzValueType::Double | VzValueType::Float64 => {
+            let typed = readdouble(script, addr)?;
+            let arr = bytes_to_array::<8>(first);
+            let le = f64::from_le_bytes(arr).to_bits();
+            let be = f64::from_be_bytes(arr).to_bits();
+            let tb = typed.to_bits();
+            if le == tb {
+                true
+            } else if be == tb {
+                false
+            } else {
+                true
+            }
+        }
+        _ => true,
+    };
+
+    Ok(le)
+}
+
+// Decode a value of the given type from a byte slice into a plain string (without colors)
+fn decode_value_to_string_from_bytes(value_type: &VzValueType, slice: &[u8], little_endian: bool) -> String {
+    // Helper to safely copy bytes into arrays
+    fn bytes_to_array<const N: usize>(slice: &[u8]) -> [u8; N] {
+        let mut arr = [0u8; N];
+        arr.copy_from_slice(&slice[..N]);
+        arr
+    }
+
+    match value_type {
+        VzValueType::Byte | VzValueType::Int8 => {
+            let v = slice[0] as i8;
+            v.to_string()
+        }
+        VzValueType::UByte | VzValueType::UInt8 => {
+            let v = slice[0] as u8;
+            v.to_string()
+        }
+        VzValueType::Short | VzValueType::Int16 => {
+            let arr = bytes_to_array::<2>(slice);
+            let v = if little_endian { i16::from_le_bytes(arr) } else { i16::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::UShort | VzValueType::UInt16 => {
+            let arr = bytes_to_array::<2>(slice);
+            let v = if little_endian { u16::from_le_bytes(arr) } else { u16::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::Int | VzValueType::Int32 => {
+            let arr = bytes_to_array::<4>(slice);
+            let v = if little_endian { i32::from_le_bytes(arr) } else { i32::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::UInt | VzValueType::UInt32 => {
+            let arr = bytes_to_array::<4>(slice);
+            let v = if little_endian { u32::from_le_bytes(arr) } else { u32::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::Long | VzValueType::Int64 => {
+            let arr = bytes_to_array::<8>(slice);
+            let v = if little_endian { i64::from_le_bytes(arr) } else { i64::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::ULong | VzValueType::UInt64 => {
+            let arr = bytes_to_array::<8>(slice);
+            let v = if little_endian { u64::from_le_bytes(arr) } else { u64::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::Float | VzValueType::Float32 => {
+            let arr = bytes_to_array::<4>(slice);
+            let v = if little_endian { f32::from_le_bytes(arr) } else { f32::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::Double | VzValueType::Float64 => {
+            let arr = bytes_to_array::<8>(slice);
+            let v = if little_endian { f64::from_le_bytes(arr) } else { f64::from_be_bytes(arr) };
+            v.to_string()
+        }
+        VzValueType::Bool | VzValueType::Boolean => {
+            let v = slice[0] != 0;
+            format!("{}", v)
+        }
+        VzValueType::Pointer => {
+            let arr = bytes_to_array::<8>(slice);
+            let v = if little_endian { u64::from_le_bytes(arr) } else { u64::from_be_bytes(arr) };
+            format!("{:#018x}", v)
+        }
+        // For these types, view uses hex-bytes mode; fallback to single byte display string
+        VzValueType::String | VzValueType::Utf8 | VzValueType::Array | VzValueType::Bytes => {
+            format!("{:02x}", slice[0])
+        }
+        VzValueType::Void => "".to_string(),
+    }
 }

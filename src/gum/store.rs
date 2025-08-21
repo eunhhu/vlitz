@@ -274,33 +274,58 @@ impl Store {
     }
 
     pub fn sort(&mut self, sort_by: Option<&str>) {
-        self.data.sort_by_key(|item| match sort_by {
-            Some("addr") => match item {
-                VzData::Pointer(p) => p.address.to_string(),
-                VzData::Module(m) => m.address.to_string(),
-                VzData::Range(r) => r.address.to_string(),
-                VzData::Function(f) => f.address.to_string(),
-                VzData::Variable(v) => v.address.to_string(),
-                VzData::JavaClass(c) => c.name.to_string(),
-                VzData::JavaMethod(m) => m.name.to_string(),
-                VzData::ObjCClass(c) => c.name.to_string(),
-                VzData::ObjCMethod(m) => m.name.to_string(),
-                VzData::Thread(t) => t.id.to_string(),
-                _ => "".to_string(),
-            },
-            _ | None => match item {
-                VzData::Pointer(p) => p.address.to_string(),
-                VzData::Module(m) => m.name.to_string(),
-                VzData::Range(r) => r.address.to_string(),
-                VzData::Function(f) => f.name.to_string(),
-                VzData::Variable(v) => v.name.to_string(),
-                VzData::JavaClass(c) => c.name.to_string(),
-                VzData::JavaMethod(m) => m.name.to_string(),
-                VzData::ObjCClass(c) => c.name.to_string(),
-                VzData::ObjCMethod(m) => m.name.to_string(),
-                VzData::Thread(f) => f.id.to_string(),
-                _ => "".to_string(),
-            },
+        use std::cmp::Ordering;
+
+        fn get_addr(item: &VzData) -> Option<u64> {
+            match item {
+                VzData::Pointer(p) => Some(p.address),
+                VzData::Module(m) => Some(m.address),
+                VzData::Range(r) => Some(r.address),
+                VzData::Function(f) => Some(f.address),
+                VzData::Variable(v) => Some(v.address),
+                _ => None,
+            }
+        }
+
+        fn get_name(item: &VzData) -> Option<&str> {
+            match item {
+                VzData::Module(m) => Some(&m.name),
+                VzData::Function(f) => Some(&f.name),
+                VzData::Variable(v) => Some(&v.name),
+                VzData::JavaClass(c) => Some(&c.name),
+                VzData::JavaMethod(m) => Some(&m.name),
+                VzData::ObjCClass(c) => Some(&c.name),
+                VzData::ObjCMethod(m) => Some(&m.name),
+                _ => None,
+            }
+        }
+
+        fn get_id(item: &VzData) -> Option<u64> {
+            match item {
+                VzData::Thread(t) => Some(t.id as u64),
+                _ => None,
+            }
+        }
+
+        self.data.sort_by(|a, b| match sort_by {
+            Some("addr") => {
+                let aa = get_addr(a).unwrap_or(0);
+                let bb = get_addr(b).unwrap_or(0);
+                aa.cmp(&bb)
+            }
+            _ | None => {
+                match (get_name(a), get_name(b)) {
+                    (Some(na), Some(nb)) => na.cmp(nb),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => {
+                        // Fallback to id (e.g., threads) or address
+                        let ida = get_id(a).or_else(|| get_addr(a));
+                        let idb = get_id(b).or_else(|| get_addr(b));
+                        ida.unwrap_or(0).cmp(&idb.unwrap_or(0))
+                    }
+                }
+            }
         });
         self.adjust_cursor();
     }
@@ -310,29 +335,40 @@ impl Store {
             return; // No filter, do nothing
         }
 
-        let mut data = self.data.clone();
-        data.retain(|item: &VzData| {
-            filter_segments.iter().all(|segment| match segment {
-                FilterSegment::Condition(cond) => self.evaluate_condition_for_item(item, cond),
-                FilterSegment::Logical(op) => match op {
-                    LogicalOperator::And => true,
-                    LogicalOperator::Or => false,
-                },
-            })
+        // Evaluate left-to-right with explicit AND/OR operators
+        self.data.retain(|item: &VzData| {
+            let mut acc: Option<bool> = None;
+            let mut current_op = LogicalOperator::And;
+            for segment in &filter_segments {
+                match segment {
+                    FilterSegment::Condition(cond) => {
+                        let res = Self::evaluate_condition_for_item(item, cond);
+                        acc = Some(match acc {
+                            None => res,
+                            Some(prev) => match current_op {
+                                LogicalOperator::And => prev && res,
+                                LogicalOperator::Or => prev || res,
+                            },
+                        });
+                    }
+                    FilterSegment::Logical(op) => {
+                        current_op = op.clone();
+                    }
+                }
+            }
+            acc.unwrap_or(true)
         });
-        self.data = data;
         self.adjust_cursor();
     }
 
     fn evaluate_condition_for_item(
-        &self,
         vz_data_item: &VzData,
         condition: &super::filter::FilterCondition,
     ) -> bool {
         if let Some(item_field_value) =
-            self.get_field_value_for_filtering(vz_data_item, &condition.key)
+            Self::get_field_value_for_filtering(vz_data_item, &condition.key)
         {
-            return self.compare_filter_values(
+            return Self::compare_filter_values(
                 &item_field_value,
                 &condition.operator,
                 &condition.value,
@@ -342,7 +378,6 @@ impl Store {
     }
 
     fn get_field_value_for_filtering(
-        &self,
         vz_data_item: &VzData,
         key: &str,
     ) -> Option<FilterValue> {
@@ -432,7 +467,6 @@ impl Store {
     }
 
     fn compare_filter_values(
-        &self,
         item_val: &FilterValue,
         op: &super::filter::FilterOperator,
         filter_val: &FilterValue,
@@ -468,7 +502,7 @@ impl Store {
             },
             (FilterValue::Number(n_item), FilterValue::String(s_filter)) => {
                 if let Ok(n_filter) = s_filter.parse::<f64>() {
-                    self.compare_filter_values(
+                    Self::compare_filter_values(
                         &FilterValue::Number(*n_item),
                         op,
                         &FilterValue::Number(n_filter),
@@ -479,7 +513,7 @@ impl Store {
             }
             (FilterValue::String(s_item), FilterValue::Number(n_filter)) => {
                 if let Ok(n_item) = s_item.parse::<f64>() {
-                    self.compare_filter_values(
+                    Self::compare_filter_values(
                         &FilterValue::Number(n_item),
                         op,
                         &FilterValue::Number(*n_filter),
