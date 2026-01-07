@@ -196,6 +196,11 @@ pub fn get_address_from_data(data: &VzData) -> Option<u64> {
         VzData::Range(r) => Some(r.address),
         VzData::Function(f) => Some(f.address),
         VzData::Variable(v) => Some(v.address),
+        VzData::Hook(h) => Some(h.address),
+        VzData::Instruction(i) => Some(i.address),
+        VzData::ScanResult(s) => Some(s.address),
+        VzData::Import(i) => i.address,
+        VzData::Symbol(s) => Some(s.address),
         _ => None,
     }
 }

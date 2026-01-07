@@ -8,17 +8,18 @@ use crate::gum::{
     },
 };
 use crate::util::logger;
-use crossterm::style::Stylize;
+use crossterm::{style::Stylize, terminal, ExecutableCommand};
 
 use super::{
     list::list_modules,
     navigator::Navigator,
     store::Store,
-    vzdata::{VzData, VzValueType},
+    vzdata::{VzData, VzValueType, VzDataType, VzBase, VzHook, VzInstruction, VzScanResult, VzThread, new_base},
 };
 use frida::Script;
 use regex::Regex;
-use std::{fmt, vec};
+use serde_json::json;
+use std::{fmt, vec, io::stdout, collections::HashMap};
 
 #[derive(Debug)]
 pub(crate) struct CommandArg {
@@ -710,6 +711,21 @@ impl<'a, 'b> Commander<'a, 'b> {
                                 VzData::Thread(t) => {
                                     t.base.is_saved = true;
                                 }
+                                VzData::Hook(h) => {
+                                    h.base.is_saved = true;
+                                }
+                                VzData::Instruction(i) => {
+                                    i.base.is_saved = true;
+                                }
+                                VzData::ScanResult(s) => {
+                                    s.base.is_saved = true;
+                                }
+                                VzData::Import(i) => {
+                                    i.base.is_saved = true;
+                                }
+                                VzData::Symbol(s) => {
+                                    s.base.is_saved = true;
+                                }
                             }
                             d
                         })
@@ -1157,5 +1173,1121 @@ impl<'a, 'b> Commander<'a, 'b> {
             }
         }
         true
+    }
+
+    // ========================================================================
+    // Screen/Terminal Commands
+    // ========================================================================
+
+    pub(crate) fn clear_screen(&mut self, _args: &[&str]) -> bool {
+        if let Err(e) = stdout().execute(terminal::Clear(terminal::ClearType::All)) {
+            logger::error(&format!("Failed to clear screen: {}", e));
+        }
+        if let Err(e) = stdout().execute(crossterm::cursor::MoveTo(0, 0)) {
+            logger::error(&format!("Failed to move cursor: {}", e));
+        }
+        true
+    }
+
+    // ========================================================================
+    // Hook Commands
+    // ========================================================================
+
+    pub(crate) fn hook_add(&mut self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            logger::error("Target address or selector required");
+            return true;
+        }
+
+        let arg0 = args[0];
+        
+        // Try to resolve the target address
+        let address = self.resolve_target_address(arg0);
+        let address = match address {
+            Ok(addr) => addr,
+            Err(e) => {
+                logger::error(&format!("Failed to resolve target: {}", e));
+                return true;
+            }
+        };
+
+        // Parse options from remaining args
+        let mut config = serde_json::Map::new();
+        config.insert("onEnter".to_string(), json!(true));
+        config.insert("onLeave".to_string(), json!(false));
+        config.insert("logArgs".to_string(), json!(false));
+        config.insert("logRetval".to_string(), json!(false));
+        config.insert("backtrace".to_string(), json!(false));
+        config.insert("argCount".to_string(), json!(4));
+
+        // Parse option flags
+        for arg in args.iter().skip(1) {
+            match *arg {
+                "-e" | "--enter" => { config.insert("onEnter".to_string(), json!(true)); }
+                "-l" | "--leave" => { config.insert("onLeave".to_string(), json!(true)); }
+                "-a" | "--args" => { config.insert("logArgs".to_string(), json!(true)); }
+                "-r" | "--retval" => { config.insert("logRetval".to_string(), json!(true)); }
+                "-b" | "--backtrace" => { config.insert("backtrace".to_string(), json!(true)); }
+                "-al" | "-la" | "--all" => {
+                    config.insert("onEnter".to_string(), json!(true));
+                    config.insert("onLeave".to_string(), json!(true));
+                    config.insert("logArgs".to_string(), json!(true));
+                    config.insert("logRetval".to_string(), json!(true));
+                }
+                _ => {}
+            }
+        }
+
+        // Call the hook_attach RPC
+        let result = self.script.exports.call(
+            "hook_attach",
+            Some(json!([format!("{}", address), config]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        let id = value.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        println!(
+                            "{} Hook added: {} @ {}",
+                            "[HOOK]".green(),
+                            id.cyan(),
+                            format!("{:#x}", address).yellow()
+                        );
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to add hook: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from hook_attach"),
+            Err(e) => logger::error(&format!("Hook attach error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn hook_remove(&mut self, args: &[&str]) -> bool {
+        let id = match args.get(0) {
+            Some(id) => *id,
+            None => {
+                logger::error("Hook ID required");
+                return true;
+            }
+        };
+
+        let result = self.script.exports.call("hook_detach", Some(json!([id])));
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        println!("{} Hook removed: {}", "[HOOK]".green(), id.cyan());
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to remove hook: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from hook_detach"),
+            Err(e) => logger::error(&format!("Hook detach error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn hook_list(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("hook_list", None);
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(hooks) = value.as_array() {
+                    if hooks.is_empty() {
+                        println!("{}", "No active hooks".dark_grey());
+                    } else {
+                        println!("{} Active hooks: {}", "[HOOKS]".green(), hooks.len());
+                        for hook in hooks {
+                            let id = hook.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                            let address = hook.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let enabled = hook.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let status = if enabled { "enabled".green() } else { "disabled".dark_grey() };
+                            
+                            let config = hook.get("config");
+                            let on_enter = config.and_then(|c| c.get("onEnter")).and_then(|v| v.as_bool()).unwrap_or(false);
+                            let on_leave = config.and_then(|c| c.get("onLeave")).and_then(|v| v.as_bool()).unwrap_or(false);
+                            let log_args = config.and_then(|c| c.get("logArgs")).and_then(|v| v.as_bool()).unwrap_or(false);
+                            let log_retval = config.and_then(|c| c.get("logRetval")).and_then(|v| v.as_bool()).unwrap_or(false);
+                            
+                            let flags = format!(
+                                "{}{}{}{}",
+                                if on_enter { "E" } else { "-" },
+                                if on_leave { "L" } else { "-" },
+                                if log_args { "A" } else { "-" },
+                                if log_retval { "R" } else { "-" }
+                            );
+                            
+                            println!(
+                                "  {} @ {} [{}] ({})",
+                                id.cyan(),
+                                address.yellow(),
+                                flags.dark_grey(),
+                                status
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "No active hooks".dark_grey()),
+            Err(e) => logger::error(&format!("Hook list error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn hook_enable(&mut self, args: &[&str]) -> bool {
+        let id = match args.get(0) {
+            Some(id) => *id,
+            None => {
+                logger::error("Hook ID required");
+                return true;
+            }
+        };
+
+        let result = self.script.exports.call("hook_enable", Some(json!([id])));
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        println!("{} Hook enabled: {}", "[HOOK]".green(), id.cyan());
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to enable hook: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from hook_enable"),
+            Err(e) => logger::error(&format!("Hook enable error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn hook_disable(&mut self, args: &[&str]) -> bool {
+        let id = match args.get(0) {
+            Some(id) => *id,
+            None => {
+                logger::error("Hook ID required");
+                return true;
+            }
+        };
+
+        let result = self.script.exports.call("hook_disable", Some(json!([id])));
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        println!("{} Hook disabled: {}", "[HOOK]".green(), id.cyan());
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to disable hook: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from hook_disable"),
+            Err(e) => logger::error(&format!("Hook disable error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn hook_clear(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("hook_clear_all", None);
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                        println!("{} Cleared {} hooks", "[HOOK]".green(), count);
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to clear hooks: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from hook_clear_all"),
+            Err(e) => logger::error(&format!("Hook clear error: {}", e)),
+        }
+        true
+    }
+
+    // ========================================================================
+    // Disassembly Commands
+    // ========================================================================
+
+    pub(crate) fn disas(&mut self, args: &[&str]) -> bool {
+        let (address, count) = if args.is_empty() {
+            // Use navigator address
+            match self.navigator.get_data() {
+                Some(data) => {
+                    let addr = get_address_from_data(data).unwrap_or(0);
+                    (addr, 20usize)
+                }
+                None => {
+                    logger::error("No address specified and navigator is empty");
+                    return true;
+                }
+            }
+        } else {
+            let addr = match self.resolve_target_address(args[0]) {
+                Ok(a) => a,
+                Err(e) => {
+                    logger::error(&format!("Failed to resolve address: {}", e));
+                    return true;
+                }
+            };
+            let count = args.get(1)
+                .and_then(|s| Self::parse_usize(s).ok())
+                .unwrap_or(20);
+            (addr, count)
+        };
+
+        if address == 0 {
+            logger::error("Invalid address: 0x0");
+            return true;
+        }
+
+        let result = self.script.exports.call(
+            "disassemble",
+            Some(json!([format!("{}", address), count]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(instructions) = value.as_array() {
+                    if instructions.is_empty() {
+                        println!("{}", "No instructions to display".dark_grey());
+                    } else {
+                        println!("{} Disassembly @ {}", "[DISAS]".cyan(), format!("{:#x}", address).yellow());
+                        for insn in instructions {
+                            let addr = insn.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let mnemonic = insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
+                            let op_str = insn.get("opStr").and_then(|v| v.as_str()).unwrap_or("");
+                            let bytes = insn.get("bytes")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter()
+                                    .filter_map(|b| b.as_u64())
+                                    .map(|b| format!("{:02x}", b))
+                                    .collect::<Vec<_>>()
+                                    .join(" "))
+                                .unwrap_or_default();
+                            
+                            println!(
+                                "  {} {} {} {}",
+                                addr.yellow(),
+                                format!("{:<24}", bytes).dark_grey(),
+                                mnemonic.cyan(),
+                                op_str
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from disassemble"),
+            Err(e) => logger::error(&format!("Disassembly error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn disas_function(&mut self, args: &[&str]) -> bool {
+        let address = if args.is_empty() {
+            match self.navigator.get_data() {
+                Some(data) => get_address_from_data(data).unwrap_or(0),
+                None => {
+                    logger::error("No address specified and navigator is empty");
+                    return true;
+                }
+            }
+        } else {
+            match self.resolve_target_address(args[0]) {
+                Ok(a) => a,
+                Err(e) => {
+                    logger::error(&format!("Failed to resolve address: {}", e));
+                    return true;
+                }
+            }
+        };
+
+        if address == 0 {
+            logger::error("Invalid address: 0x0");
+            return true;
+        }
+
+        let result = self.script.exports.call(
+            "disassemble_function",
+            Some(json!([format!("{}", address)]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(instructions) = value.as_array() {
+                    if instructions.is_empty() {
+                        println!("{}", "No instructions to display".dark_grey());
+                    } else {
+                        println!("{} Function @ {} ({} instructions)",
+                            "[DISAS]".cyan(),
+                            format!("{:#x}", address).yellow(),
+                            instructions.len()
+                        );
+                        for insn in instructions {
+                            let addr = insn.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let mnemonic = insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
+                            let op_str = insn.get("opStr").and_then(|v| v.as_str()).unwrap_or("");
+                            let bytes = insn.get("bytes")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter()
+                                    .filter_map(|b| b.as_u64())
+                                    .map(|b| format!("{:02x}", b))
+                                    .collect::<Vec<_>>()
+                                    .join(" "))
+                                .unwrap_or_default();
+                            
+                            println!(
+                                "  {} {} {} {}",
+                                addr.yellow(),
+                                format!("{:<24}", bytes).dark_grey(),
+                                mnemonic.cyan(),
+                                op_str
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from disassemble_function"),
+            Err(e) => logger::error(&format!("Disassembly error: {}", e)),
+        }
+        true
+    }
+
+    // ========================================================================
+    // Patch Commands
+    // ========================================================================
+
+    pub(crate) fn patch_bytes(&mut self, args: &[&str]) -> bool {
+        if args.len() < 2 {
+            logger::error("Usage: patch bytes <target> <hex_bytes>");
+            return true;
+        }
+
+        let address = match self.resolve_target_address(args[0]) {
+            Ok(a) => a,
+            Err(e) => {
+                logger::error(&format!("Failed to resolve address: {}", e));
+                return true;
+            }
+        };
+
+        // Parse hex bytes
+        let bytes_str = args[1..].join(" ");
+        let bytes: Vec<u8> = bytes_str
+            .split_whitespace()
+            .filter_map(|s| u8::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+            .collect();
+
+        if bytes.is_empty() {
+            logger::error("Invalid hex bytes");
+            return true;
+        }
+
+        let result = self.script.exports.call(
+            "patch_bytes",
+            Some(json!([format!("{}", address), bytes]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        let original = value.get("original")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter()
+                                .filter_map(|b| b.as_u64())
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>()
+                                .join(" "))
+                            .unwrap_or_default();
+                        println!(
+                            "{} Patched {} @ {}",
+                            "[PATCH]".green(),
+                            format!("{} bytes", bytes.len()).cyan(),
+                            format!("{:#x}", address).yellow()
+                        );
+                        println!("  Original: {}", original.dark_grey());
+                        println!("  Patched:  {}", bytes_str);
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to patch: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from patch_bytes"),
+            Err(e) => logger::error(&format!("Patch error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn patch_nop(&mut self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            logger::error("Usage: nop <target> [count]");
+            return true;
+        }
+
+        let address = match self.resolve_target_address(args[0]) {
+            Ok(a) => a,
+            Err(e) => {
+                logger::error(&format!("Failed to resolve address: {}", e));
+                return true;
+            }
+        };
+
+        let count = args.get(1)
+            .and_then(|s| Self::parse_usize(s).ok())
+            .unwrap_or(1);
+
+        let result = self.script.exports.call(
+            "nop_instructions",
+            Some(json!([format!("{}", address), count]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        let original = value.get("original")
+                            .and_then(|v| v.as_array())
+                            .map(|arr| arr.iter()
+                                .filter_map(|b| b.as_u64())
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>()
+                                .join(" "))
+                            .unwrap_or_default();
+                        println!(
+                            "{} NOPed {} instruction(s) @ {}",
+                            "[PATCH]".green(),
+                            count,
+                            format!("{:#x}", address).yellow()
+                        );
+                        println!("  Original: {}", original.dark_grey());
+                    } else {
+                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        logger::error(&format!("Failed to NOP: {}", error));
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from nop_instructions"),
+            Err(e) => logger::error(&format!("NOP error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn patch_restore(&mut self, args: &[&str]) -> bool {
+        // This would need to maintain a history of patches to restore
+        // For now, just show a message
+        logger::error("Patch restore not yet implemented. Save original bytes when patching.");
+        true
+    }
+
+    // ========================================================================
+    // Scan Commands
+    // ========================================================================
+
+    pub(crate) fn scan_bytes(&mut self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            logger::error("Usage: scan bytes <pattern> [protection]");
+            return true;
+        }
+
+        let pattern = args[0];
+        let protection = args.get(1).map(|s| *s);
+
+        println!("{} Scanning for pattern: {}", "[SCAN]".cyan(), pattern);
+
+        let params = if let Some(prot) = protection {
+            json!([pattern, prot])
+        } else {
+            json!([pattern])
+        };
+
+        let result = self.script.exports.call("scan_pattern", Some(params));
+
+        match result {
+            Ok(Some(value)) => {
+                let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
+                
+                if count > 0 {
+                    if let Some(results) = value.get("results").and_then(|v| v.as_array()) {
+                        let show_count = results.len().min(10);
+                        for result in results.iter().take(show_count) {
+                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            println!("  {}", addr.yellow());
+                        }
+                        if count > 10 {
+                            println!("  ... and {} more (use 'scan results' to see all)", count - 10);
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from scan_pattern"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_string(&mut self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            logger::error("Usage: scan string <text> [protection]");
+            return true;
+        }
+
+        let text = args[0];
+        let protection = args.get(1).map(|s| *s);
+
+        println!("{} Scanning for string: \"{}\"", "[SCAN]".cyan(), text);
+
+        let params = if let Some(prot) = protection {
+            json!([text, prot])
+        } else {
+            json!([text])
+        };
+
+        let result = self.script.exports.call("scan_string", Some(params));
+
+        match result {
+            Ok(Some(value)) => {
+                let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
+                
+                if count > 0 {
+                    if let Some(results) = value.get("results").and_then(|v| v.as_array()) {
+                        let show_count = results.len().min(10);
+                        for result in results.iter().take(show_count) {
+                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            println!("  {}", addr.yellow());
+                        }
+                        if count > 10 {
+                            println!("  ... and {} more", count - 10);
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from scan_string"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_value(&mut self, args: &[&str]) -> bool {
+        if args.len() < 2 {
+            logger::error("Usage: scan value <type> <value> [protection]");
+            return true;
+        }
+
+        let value_type = args[0];
+        let value = args[1];
+        let protection = args.get(2).map(|s| *s);
+
+        println!("{} Scanning for {} value: {}", "[SCAN]".cyan(), value_type, value);
+
+        let params = if let Some(prot) = protection {
+            json!([value_type, value, prot])
+        } else {
+            json!([value_type, value])
+        };
+
+        let result = self.script.exports.call("scan_value", Some(params));
+
+        match result {
+            Ok(Some(value_result)) => {
+                let count = value_result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
+                
+                if count > 0 {
+                    if let Some(results) = value_result.get("results").and_then(|v| v.as_array()) {
+                        let show_count = results.len().min(10);
+                        for result in results.iter().take(show_count) {
+                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            println!("  {}", addr.yellow());
+                        }
+                        if count > 10 {
+                            println!("  ... and {} more", count - 10);
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from scan_value"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_next(&mut self, args: &[&str]) -> bool {
+        if args.is_empty() {
+            logger::error("Usage: scan next <value> [comparison]");
+            return true;
+        }
+
+        let value = args[0];
+        let comparison = args.get(1).unwrap_or(&"eq");
+
+        println!("{} Refining scan with value: {} ({})", "[SCAN]".cyan(), value, comparison);
+
+        // We need to know the type from the previous scan
+        // For now, assume int32 as default
+        let result = self.script.exports.call(
+            "scan_next",
+            Some(json!(["int32", value, comparison]))
+        );
+
+        match result {
+            Ok(Some(value_result)) => {
+                let count = value_result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} {} results remaining", "[SCAN]".green(), count.to_string().yellow());
+                
+                if count > 0 && count <= 20 {
+                    if let Some(results) = value_result.get("results").and_then(|v| v.as_array()) {
+                        for result in results {
+                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let current = result.get("currentValue");
+                            if let Some(val) = current {
+                                println!("  {} = {}", addr.yellow(), val);
+                            } else {
+                                println!("  {}", addr.yellow());
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from scan_next"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_changed(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("scan_changed", Some(json!(["int32"])));
+
+        match result {
+            Ok(Some(value)) => {
+                let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} {} addresses changed", "[SCAN]".green(), count.to_string().yellow());
+            }
+            Ok(None) => logger::error("No response from scan_changed"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_unchanged(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("scan_unchanged", Some(json!(["int32"])));
+
+        match result {
+            Ok(Some(value)) => {
+                let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("{} {} addresses unchanged", "[SCAN]".green(), count.to_string().yellow());
+            }
+            Ok(None) => logger::error("No response from scan_unchanged"),
+            Err(e) => logger::error(&format!("Scan error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_snapshot(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("scan_snapshot", Some(json!(["int32"])));
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+                        println!("{} Snapshot taken of {} addresses", "[SCAN]".green(), count);
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from scan_snapshot"),
+            Err(e) => logger::error(&format!("Snapshot error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_results(&mut self, args: &[&str]) -> bool {
+        let offset = args.get(0)
+            .and_then(|s| Self::parse_usize(s).ok())
+            .unwrap_or(0);
+        let limit = args.get(1)
+            .and_then(|s| Self::parse_usize(s).ok())
+            .unwrap_or(50);
+
+        let result = self.script.exports.call(
+            "get_scan_result_values",
+            Some(json!(["int32", offset, limit]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(results) = value.as_array() {
+                    if results.is_empty() {
+                        println!("{}", "No scan results".dark_grey());
+                    } else {
+                        println!("{} Scan results ({}-{}):", "[SCAN]".cyan(), offset, offset + results.len());
+                        for (i, result) in results.iter().enumerate() {
+                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let val = result.get("value");
+                            let idx = offset + i;
+                            if let Some(v) = val {
+                                println!("  [{}] {} = {}", idx.to_string().blue(), addr.yellow(), v);
+                            } else {
+                                println!("  [{}] {}", idx.to_string().blue(), addr.yellow());
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "No scan results".dark_grey()),
+            Err(e) => logger::error(&format!("Error getting results: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_list(&mut self, args: &[&str]) -> bool {
+        let limit = args.get(0)
+            .and_then(|s| Self::parse_usize(s).ok())
+            .unwrap_or(100);
+
+        let result = self.script.exports.call(
+            "get_scan_result_values",
+            Some(json!(["int32", 0, limit]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(results) = value.as_array() {
+                    let scan_results: Vec<VzData> = results.iter()
+                        .filter_map(|r| {
+                            let addr_str = r.get("address").and_then(|v| v.as_str())?;
+                            let address = crate::gum::vzdata::string_to_u64(addr_str);
+                            let value = r.get("value").map(|v| v.to_string());
+                            
+                            Some(VzData::ScanResult(VzScanResult {
+                                base: new_base(VzDataType::ScanResult),
+                                address,
+                                size: 4,
+                                value,
+                                pattern: None,
+                            }))
+                        })
+                        .collect();
+
+                    self.field.clear_data();
+                    self.field.add_datas(scan_results);
+                    println!("{}", self.field.to_string(None));
+                }
+            }
+            Ok(None) => println!("{}", "No scan results".dark_grey()),
+            Err(e) => logger::error(&format!("Error loading results: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn scan_clear(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("clear_scan", None);
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        println!("{} Scan results cleared", "[SCAN]".green());
+                    }
+                }
+            }
+            Ok(None) => logger::error("No response from clear_scan"),
+            Err(e) => logger::error(&format!("Clear error: {}", e)),
+        }
+        true
+    }
+
+    // ========================================================================
+    // Thread Commands
+    // ========================================================================
+
+    pub(crate) fn thread_list(&mut self, _args: &[&str]) -> bool {
+        let result = self.script.exports.call("list_threads", None);
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(threads) = value.as_array() {
+                    if threads.is_empty() {
+                        println!("{}", "No threads found".dark_grey());
+                    } else {
+                        println!("{} {} threads:", "[THREADS]".cyan(), threads.len());
+                        
+                        let thread_datas: Vec<VzData> = threads.iter()
+                            .filter_map(|t| {
+                                let id = t.get("id").and_then(|v| v.as_u64())?;
+                                let state = t.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                
+                                println!(
+                                    "  Thread {} ({})",
+                                    id.to_string().yellow(),
+                                    state.dark_grey()
+                                );
+
+                                Some(VzData::Thread(VzThread {
+                                    base: new_base(VzDataType::Thread),
+                                    id,
+                                }))
+                            })
+                            .collect();
+
+                        self.field.clear_data();
+                        self.field.add_datas(thread_datas);
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "No threads found".dark_grey()),
+            Err(e) => logger::error(&format!("Thread list error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn thread_regs(&mut self, args: &[&str]) -> bool {
+        let thread_id = args.get(0)
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let thread_id = match thread_id {
+            Some(id) => id,
+            None => {
+                // Try to get first thread
+                let result = self.script.exports.call("list_threads", None);
+                match result {
+                    Ok(Some(value)) => {
+                        value.as_array()
+                            .and_then(|arr| arr.first())
+                            .and_then(|t| t.get("id"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    }
+                    _ => 0
+                }
+            }
+        };
+
+        if thread_id == 0 {
+            logger::error("No valid thread ID");
+            return true;
+        }
+
+        let result = self.script.exports.call(
+            "get_thread_context",
+            Some(json!([thread_id]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if value.is_null() {
+                    println!("{}", "Thread context not available".dark_grey());
+                } else if let Some(regs) = value.as_object() {
+                    println!("{} Thread {} registers:", "[REGS]".cyan(), thread_id.to_string().yellow());
+                    for (name, val) in regs {
+                        if let Some(v) = val.as_str() {
+                            println!("  {:<6} = {}", name.cyan(), v.yellow());
+                        }
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "Thread context not available".dark_grey()),
+            Err(e) => logger::error(&format!("Register read error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn thread_stack(&mut self, args: &[&str]) -> bool {
+        let thread_id = args.get(0).and_then(|s| s.parse::<u64>().ok());
+        let depth = args.get(1)
+            .and_then(|s| Self::parse_usize(s).ok())
+            .unwrap_or(32);
+
+        // First get thread context to find SP
+        let thread_id = match thread_id {
+            Some(id) => id,
+            None => {
+                let result = self.script.exports.call("list_threads", None);
+                match result {
+                    Ok(Some(value)) => {
+                        value.as_array()
+                            .and_then(|arr| arr.first())
+                            .and_then(|t| t.get("id"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                    }
+                    _ => 0
+                }
+            }
+        };
+
+        if thread_id == 0 {
+            logger::error("No valid thread ID");
+            return true;
+        }
+
+        // Get thread context to find SP
+        let ctx_result = self.script.exports.call(
+            "get_thread_context",
+            Some(json!([thread_id]))
+        );
+
+        let sp = match ctx_result {
+            Ok(Some(value)) => {
+                // Try common SP register names
+                value.get("rsp")
+                    .or_else(|| value.get("esp"))
+                    .or_else(|| value.get("sp"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| crate::gum::vzdata::string_to_u64(s).into())
+                    .unwrap_or(0)
+            }
+            _ => 0
+        };
+
+        if sp == 0 {
+            logger::error("Could not determine stack pointer");
+            return true;
+        }
+
+        let result = self.script.exports.call(
+            "read_stack",
+            Some(json!([format!("{}", sp), depth]))
+        );
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(stack) = value.as_array() {
+                    println!("{} Stack @ {} (thread {}):",
+                        "[STACK]".cyan(),
+                        format!("{:#x}", sp).yellow(),
+                        thread_id
+                    );
+                    for entry in stack {
+                        let offset = entry.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let addr = entry.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                        let val = entry.get("value").and_then(|v| v.as_str()).unwrap_or("?");
+                        let module = entry.get("module").and_then(|v| v.as_str());
+                        let symbol = entry.get("symbol").and_then(|v| v.as_str());
+
+                        let info = match (module, symbol) {
+                            (Some(m), Some(s)) => format!(" ({}: {})", m, s),
+                            (Some(m), None) => format!(" ({})", m),
+                            _ => String::new()
+                        };
+
+                        println!(
+                            "  +{:<4} {} -> {}{}",
+                            format!("{:#x}", offset),
+                            addr.dark_grey(),
+                            val.yellow(),
+                            info.dark_grey()
+                        );
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "Could not read stack".dark_grey()),
+            Err(e) => logger::error(&format!("Stack read error: {}", e)),
+        }
+        true
+    }
+
+    pub(crate) fn thread_backtrace(&mut self, args: &[&str]) -> bool {
+        let result = self.script.exports.call("backtrace", None);
+
+        match result {
+            Ok(Some(value)) => {
+                if let Some(frames) = value.as_array() {
+                    if frames.is_empty() {
+                        println!("{}", "No backtrace available".dark_grey());
+                    } else {
+                        println!("{} Backtrace ({} frames):", "[BT]".cyan(), frames.len());
+                        for (i, frame) in frames.iter().enumerate() {
+                            let addr = frame.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let module = frame.get("module").and_then(|v| v.as_str());
+                            let symbol = frame.get("symbol").and_then(|v| v.as_str());
+                            let offset = frame.get("offset").and_then(|v| v.as_i64());
+
+                            let location = match (module, symbol, offset) {
+                                (Some(m), Some(s), Some(o)) => format!("{}!{} +{:#x}", m, s, o),
+                                (Some(m), Some(s), None) => format!("{}!{}", m, s),
+                                (Some(m), None, Some(o)) => format!("{} +{:#x}", m, o),
+                                (Some(m), None, None) => m.to_string(),
+                                _ => "???".to_string()
+                            };
+
+                            println!(
+                                "  #{:<2} {} {}",
+                                i,
+                                addr.yellow(),
+                                location.dark_grey()
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(None) => println!("{}", "No backtrace available".dark_grey()),
+            Err(e) => logger::error(&format!("Backtrace error: {}", e)),
+        }
+        true
+    }
+
+    // ========================================================================
+    // Helper Methods
+    // ========================================================================
+
+    /// Resolve a target string to an address
+    /// Accepts: hex address, decimal address, or selector
+    fn resolve_target_address(&mut self, target: &str) -> Result<u64, String> {
+        // First try to parse as a number
+        if let Ok(addr) = Self::parse_number(target) {
+            return Ok(addr);
+        }
+
+        // Try selector
+        match self.selector(target) {
+            Ok(data) => {
+                if data.is_empty() {
+                    Err("No data found for selector".to_string())
+                } else {
+                    get_address_from_data(data[0])
+                        .ok_or_else(|| "Selected data has no address".to_string())
+                }
+            }
+            Err(e) => {
+                // Try to resolve as symbol name
+                let result = self.script.exports.call(
+                    "find_symbol",
+                    Some(json!([target]))
+                );
+                
+                match result {
+                    Ok(Some(value)) => {
+                        if value.is_null() {
+                            Err(format!("Symbol not found: {}", target))
+                        } else {
+                            value.get("address")
+                                .and_then(|v| v.as_str())
+                                .map(|s| crate::gum::vzdata::string_to_u64(s))
+                                .ok_or_else(|| format!("Invalid symbol address for: {}", target))
+                        }
+                    }
+                    Ok(None) => Err(format!("Symbol not found: {}", target)),
+                    Err(_) => Err(e)
+                }
+            }
+        }
     }
 }
