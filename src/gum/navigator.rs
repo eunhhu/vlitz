@@ -75,21 +75,33 @@ impl fmt::Display for Navigator {
                     format!("{}:", t.base.data_type.to_string()).blue(),
                     format!("{}", t.id).yellow(),
                 ),
+                VzData::Hook(h) => write!(
+                    f,
+                    "{}{}{}",
+                    format!("{}:", h.base.data_type.to_string()).blue(),
+                    format!("{}", h.id).yellow(),
+                    format!("@{:#x}", h.address).yellow(),
+                ),
+                VzData::Instruction(i) => write!(f, "{}", format!("{:#x}", i.address).yellow(),),
+                VzData::ScanResult(s) => write!(
+                    f,
+                    "{:#x} = {}",
+                    s.address,
+                    s.value.as_deref().unwrap_or(&"?".to_string()).cyan(),
+                ),
+                VzData::Import(imp) => write!(
+                    f,
+                    "{}{}",
+                    format!("{}:", imp.base.data_type.to_string()).blue(),
+                    imp.name,
+                ),
+                VzData::Symbol(sym) => write!(
+                    f,
+                    "{}{}",
+                    format!("{}:", sym.base.data_type.to_string()).blue(),
+                    sym.name,
+                ),
             },
-            VzData::Hook(h) => write!(
-                f,
-                "{}{}{}",
-                format!("{}:", h.base.data_type.to_string()).blue(),
-                format!("{}", h.id).yellow(),
-                format!("@{:#x}", h.address).yellow(),
-            ),
-            VzData::Instruction(i) => write!(f, "{}{}", format!("{:#x}", i.address).yellow(),),
-            VzData::ScanResult(s) => write!(
-                f,
-                "{}{} = {}",
-                format!("{:#x}", s.address).yellow(),
-                s.value.as_deref().unwrap_or(&"?".to_string()).cyan(),
-            ),
             None => write!(f, "{}", "vlitz".blue()),
         }
     }
