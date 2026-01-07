@@ -1,6 +1,7 @@
 // src/gum/mod.rs
 mod handler;
 mod session;
+mod session_tests;
 
 pub mod commander;
 pub mod filter;
@@ -8,8 +9,11 @@ pub mod list;
 pub mod memory;
 pub mod navigator;
 pub mod store;
+pub mod store_tests;
 pub mod vzdata;
+pub mod vzdata_tests;
 pub mod commands;
+
 
 use std::process::exit;
 

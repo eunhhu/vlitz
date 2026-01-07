@@ -14,12 +14,15 @@ use super::{
     list::list_modules,
     navigator::Navigator,
     store::Store,
-    vzdata::{VzData, VzValueType, VzDataType, VzBase, VzHook, VzInstruction, VzScanResult, VzThread, new_base},
+    vzdata::{
+        new_base, VzBase, VzData, VzDataType, VzHook, VzInstruction, VzScanResult, VzThread,
+        VzValueType,
+    },
 };
 use frida::Script;
 use regex::Regex;
 use serde_json::json;
-use std::{fmt, vec, io::stdout, collections::HashMap};
+use std::{collections::HashMap, fmt, io::stdout, vec};
 
 #[derive(Debug)]
 pub(crate) struct CommandArg {
@@ -67,7 +70,12 @@ pub(crate) struct SubCommand {
 }
 
 impl SubCommand {
-    pub(crate) fn new(name: &str, description: &str, args: Vec<CommandArg>, execute: CommandHandler) -> Self {
+    pub(crate) fn new(
+        name: &str,
+        description: &str,
+        args: Vec<CommandArg>,
+        execute: CommandHandler,
+    ) -> Self {
         Self {
             name: name.to_string(),
             aliases: Vec::new(),
@@ -401,11 +409,61 @@ impl<'a, 'b> Commander<'a, 'b> {
                         .map_err(|e| format!("Selector '{}': search in explicitly specified 'field' store failed: {}", selector_str, e))
                         .and_then(|data| if data.is_empty() { Err(format!("Selector '{}': no items found in explicitly specified 'field' store.", selector_str)) } else { Ok(data) })
                 } else {
-                    Err(format!(
-                        "Unknown explicitly specified store: {}",
-                        store_name
-                    ))
+                    // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
+                    match self.lib.get_data_by_selection(selector_str) {
+                        Ok(lib_data) => {
+                            if lib_data.is_empty() {
+                                // Default "lib" search was empty
+                                if selector_is_numeric {
+                                    // Selector is numeric, fallback to "field"
+                                    self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                        format!("Selector '{}': no items from 'lib' (default), and 'field' (fallback) search failed: {}", selector_str, field_e)
+                                    })
+                                } else {
+                                    // Selector non-numeric, no fallback
+                                    Err(format!("Selector '{}': no items found in 'lib' (default). Non-numeric selectors do not fall back.", selector_str))
+                                }
+                            } else {
+                                // Default "lib" search successful
+                                Ok(lib_data)
+                            }
+                        }
+                        Err(lib_e) => {
+                            // Error from lib search
+                            Err(format!("Selector '{}': search in explicitly specified 'lib' store failed: {}", selector_str, lib_e))
+                        }
+                    }
                 }
+            } else {
+                // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
+                match self.lib.get_data_by_selection(selector_str) {
+                    Ok(lib_data) => {
+                        if lib_data.is_empty() {
+                            // Default "lib" search was empty
+                            if selector_is_numeric {
+                                // Selector is numeric, fallback to "field"
+                                self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                        format!("Selector '{}': no items from 'lib' (default), and 'field' (fallback) search failed: {}", selector_str, field_e)
+                                    })
+                                } else {
+                                    // Selector non-numeric, no fallback
+                                    Err(format!("Selector '{}': no items found in 'lib' (default). Non-numeric selectors do not fall back.", selector_str))
+                                }
+                            } else {
+                                // Default "lib" search successful
+                                Ok(lib_data)
+                            }
+                        }
+                        Err(lib_e) => {
+                            // Error from lib search
+                            Err(format!("Selector '{}': search in explicitly specified 'lib' store failed: {}", selector_str, lib_e))
+                        }
+                    }
+                }
+            } else {
+                Err(format!("Invalid selector syntax: {}", s))
+            }
+    }
             } else {
                 // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
                 match self.lib.get_data_by_selection(selector_str) {
@@ -1200,7 +1258,7 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
 
         let arg0 = args[0];
-        
+
         // Try to resolve the target address
         let address = self.resolve_target_address(arg0);
         let address = match address {
@@ -1223,11 +1281,21 @@ impl<'a, 'b> Commander<'a, 'b> {
         // Parse option flags
         for arg in args.iter().skip(1) {
             match *arg {
-                "-e" | "--enter" => { config.insert("onEnter".to_string(), json!(true)); }
-                "-l" | "--leave" => { config.insert("onLeave".to_string(), json!(true)); }
-                "-a" | "--args" => { config.insert("logArgs".to_string(), json!(true)); }
-                "-r" | "--retval" => { config.insert("logRetval".to_string(), json!(true)); }
-                "-b" | "--backtrace" => { config.insert("backtrace".to_string(), json!(true)); }
+                "-e" | "--enter" => {
+                    config.insert("onEnter".to_string(), json!(true));
+                }
+                "-l" | "--leave" => {
+                    config.insert("onLeave".to_string(), json!(true));
+                }
+                "-a" | "--args" => {
+                    config.insert("logArgs".to_string(), json!(true));
+                }
+                "-r" | "--retval" => {
+                    config.insert("logRetval".to_string(), json!(true));
+                }
+                "-b" | "--backtrace" => {
+                    config.insert("backtrace".to_string(), json!(true));
+                }
                 "-al" | "-la" | "--all" => {
                     config.insert("onEnter".to_string(), json!(true));
                     config.insert("onLeave".to_string(), json!(true));
@@ -1239,16 +1307,19 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
 
         // Call the hook_attach RPC
-        let result = self.script.exports.call(
-            "hook_attach",
-            Some(json!([format!("{}", address), config]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("hook_attach", Some(json!([format!("{}", address), config])));
 
         match result {
             Ok(Some(value)) => {
                 if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
                     if success {
-                        let id = value.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+                        let id = value
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown");
                         println!(
                             "{} Hook added: {} @ {}",
                             "[HOOK]".green(),
@@ -1256,7 +1327,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                             format!("{:#x}", address).yellow()
                         );
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to add hook: {}", error));
                     }
                 }
@@ -1284,7 +1358,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if success {
                         println!("{} Hook removed: {}", "[HOOK]".green(), id.cyan());
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to remove hook: {}", error));
                     }
                 }
@@ -1307,16 +1384,36 @@ impl<'a, 'b> Commander<'a, 'b> {
                         println!("{} Active hooks: {}", "[HOOKS]".green(), hooks.len());
                         for hook in hooks {
                             let id = hook.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-                            let address = hook.get("address").and_then(|v| v.as_str()).unwrap_or("?");
-                            let enabled = hook.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-                            let status = if enabled { "enabled".green() } else { "disabled".dark_grey() };
-                            
+                            let address =
+                                hook.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let enabled = hook
+                                .get("enabled")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let status = if enabled {
+                                "enabled".green()
+                            } else {
+                                "disabled".dark_grey()
+                            };
+
                             let config = hook.get("config");
-                            let on_enter = config.and_then(|c| c.get("onEnter")).and_then(|v| v.as_bool()).unwrap_or(false);
-                            let on_leave = config.and_then(|c| c.get("onLeave")).and_then(|v| v.as_bool()).unwrap_or(false);
-                            let log_args = config.and_then(|c| c.get("logArgs")).and_then(|v| v.as_bool()).unwrap_or(false);
-                            let log_retval = config.and_then(|c| c.get("logRetval")).and_then(|v| v.as_bool()).unwrap_or(false);
-                            
+                            let on_enter = config
+                                .and_then(|c| c.get("onEnter"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let on_leave = config
+                                .and_then(|c| c.get("onLeave"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let log_args = config
+                                .and_then(|c| c.get("logArgs"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            let log_retval = config
+                                .and_then(|c| c.get("logRetval"))
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+
                             let flags = format!(
                                 "{}{}{}{}",
                                 if on_enter { "E" } else { "-" },
@@ -1324,7 +1421,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                                 if log_args { "A" } else { "-" },
                                 if log_retval { "R" } else { "-" }
                             );
-                            
+
                             println!(
                                 "  {} @ {} [{}] ({})",
                                 id.cyan(),
@@ -1359,7 +1456,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if success {
                         println!("{} Hook enabled: {}", "[HOOK]".green(), id.cyan());
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to enable hook: {}", error));
                     }
                 }
@@ -1387,7 +1487,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if success {
                         println!("{} Hook disabled: {}", "[HOOK]".green(), id.cyan());
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to disable hook: {}", error));
                     }
                 }
@@ -1408,7 +1511,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
                         println!("{} Cleared {} hooks", "[HOOK]".green(), count);
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to clear hooks: {}", error));
                     }
                 }
@@ -1444,7 +1550,8 @@ impl<'a, 'b> Commander<'a, 'b> {
                     return true;
                 }
             };
-            let count = args.get(1)
+            let count = args
+                .get(1)
                 .and_then(|s| Self::parse_usize(s).ok())
                 .unwrap_or(20);
             (addr, count)
@@ -1455,10 +1562,10 @@ impl<'a, 'b> Commander<'a, 'b> {
             return true;
         }
 
-        let result = self.script.exports.call(
-            "disassemble",
-            Some(json!([format!("{}", address), count]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("disassemble", Some(json!([format!("{}", address), count])));
 
         match result {
             Ok(Some(value)) => {
@@ -1466,20 +1573,28 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if instructions.is_empty() {
                         println!("{}", "No instructions to display".dark_grey());
                     } else {
-                        println!("{} Disassembly @ {}", "[DISAS]".cyan(), format!("{:#x}", address).yellow());
+                        println!(
+                            "{} Disassembly @ {}",
+                            "[DISAS]".cyan(),
+                            format!("{:#x}", address).yellow()
+                        );
                         for insn in instructions {
                             let addr = insn.get("address").and_then(|v| v.as_str()).unwrap_or("?");
-                            let mnemonic = insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
+                            let mnemonic =
+                                insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
                             let op_str = insn.get("opStr").and_then(|v| v.as_str()).unwrap_or("");
-                            let bytes = insn.get("bytes")
+                            let bytes = insn
+                                .get("bytes")
                                 .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter()
-                                    .filter_map(|b| b.as_u64())
-                                    .map(|b| format!("{:02x}", b))
-                                    .collect::<Vec<_>>()
-                                    .join(" "))
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|b| b.as_u64())
+                                        .map(|b| format!("{:02x}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                })
                                 .unwrap_or_default();
-                            
+
                             println!(
                                 "  {} {} {} {}",
                                 addr.yellow(),
@@ -1523,7 +1638,7 @@ impl<'a, 'b> Commander<'a, 'b> {
 
         let result = self.script.exports.call(
             "disassemble_function",
-            Some(json!([format!("{}", address)]))
+            Some(json!([format!("{}", address)])),
         );
 
         match result {
@@ -1532,24 +1647,29 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if instructions.is_empty() {
                         println!("{}", "No instructions to display".dark_grey());
                     } else {
-                        println!("{} Function @ {} ({} instructions)",
+                        println!(
+                            "{} Function @ {} ({} instructions)",
                             "[DISAS]".cyan(),
                             format!("{:#x}", address).yellow(),
                             instructions.len()
                         );
                         for insn in instructions {
                             let addr = insn.get("address").and_then(|v| v.as_str()).unwrap_or("?");
-                            let mnemonic = insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
+                            let mnemonic =
+                                insn.get("mnemonic").and_then(|v| v.as_str()).unwrap_or("?");
                             let op_str = insn.get("opStr").and_then(|v| v.as_str()).unwrap_or("");
-                            let bytes = insn.get("bytes")
+                            let bytes = insn
+                                .get("bytes")
                                 .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter()
-                                    .filter_map(|b| b.as_u64())
-                                    .map(|b| format!("{:02x}", b))
-                                    .collect::<Vec<_>>()
-                                    .join(" "))
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|b| b.as_u64())
+                                        .map(|b| format!("{:02x}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                })
                                 .unwrap_or_default();
-                            
+
                             println!(
                                 "  {} {} {} {}",
                                 addr.yellow(),
@@ -1597,22 +1717,25 @@ impl<'a, 'b> Commander<'a, 'b> {
             return true;
         }
 
-        let result = self.script.exports.call(
-            "patch_bytes",
-            Some(json!([format!("{}", address), bytes]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("patch_bytes", Some(json!([format!("{}", address), bytes])));
 
         match result {
             Ok(Some(value)) => {
                 if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
                     if success {
-                        let original = value.get("original")
+                        let original = value
+                            .get("original")
                             .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter()
-                                .filter_map(|b| b.as_u64())
-                                .map(|b| format!("{:02x}", b))
-                                .collect::<Vec<_>>()
-                                .join(" "))
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|b| b.as_u64())
+                                    .map(|b| format!("{:02x}", b))
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            })
                             .unwrap_or_default();
                         println!(
                             "{} Patched {} @ {}",
@@ -1623,7 +1746,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         println!("  Original: {}", original.dark_grey());
                         println!("  Patched:  {}", bytes_str);
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to patch: {}", error));
                     }
                 }
@@ -1648,26 +1774,30 @@ impl<'a, 'b> Commander<'a, 'b> {
             }
         };
 
-        let count = args.get(1)
+        let count = args
+            .get(1)
             .and_then(|s| Self::parse_usize(s).ok())
             .unwrap_or(1);
 
         let result = self.script.exports.call(
             "nop_instructions",
-            Some(json!([format!("{}", address), count]))
+            Some(json!([format!("{}", address), count])),
         );
 
         match result {
             Ok(Some(value)) => {
                 if let Some(success) = value.get("success").and_then(|v| v.as_bool()) {
                     if success {
-                        let original = value.get("original")
+                        let original = value
+                            .get("original")
                             .and_then(|v| v.as_array())
-                            .map(|arr| arr.iter()
-                                .filter_map(|b| b.as_u64())
-                                .map(|b| format!("{:02x}", b))
-                                .collect::<Vec<_>>()
-                                .join(" "))
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|b| b.as_u64())
+                                    .map(|b| format!("{:02x}", b))
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            })
                             .unwrap_or_default();
                         println!(
                             "{} NOPed {} instruction(s) @ {}",
@@ -1677,7 +1807,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                         );
                         println!("  Original: {}", original.dark_grey());
                     } else {
-                        let error = value.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+                        let error = value
+                            .get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown error");
                         logger::error(&format!("Failed to NOP: {}", error));
                     }
                 }
@@ -1721,17 +1854,27 @@ impl<'a, 'b> Commander<'a, 'b> {
         match result {
             Ok(Some(value)) => {
                 let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
-                
+                println!(
+                    "{} Found {} results",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
+
                 if count > 0 {
                     if let Some(results) = value.get("results").and_then(|v| v.as_array()) {
                         let show_count = results.len().min(10);
                         for result in results.iter().take(show_count) {
-                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let addr = result
+                                .get("address")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             println!("  {}", addr.yellow());
                         }
                         if count > 10 {
-                            println!("  ... and {} more (use 'scan results' to see all)", count - 10);
+                            println!(
+                                "  ... and {} more (use 'scan results' to see all)",
+                                count - 10
+                            );
                         }
                     }
                 }
@@ -1764,13 +1907,20 @@ impl<'a, 'b> Commander<'a, 'b> {
         match result {
             Ok(Some(value)) => {
                 let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
-                
+                println!(
+                    "{} Found {} results",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
+
                 if count > 0 {
                     if let Some(results) = value.get("results").and_then(|v| v.as_array()) {
                         let show_count = results.len().min(10);
                         for result in results.iter().take(show_count) {
-                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let addr = result
+                                .get("address")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             println!("  {}", addr.yellow());
                         }
                         if count > 10 {
@@ -1795,7 +1945,12 @@ impl<'a, 'b> Commander<'a, 'b> {
         let value = args[1];
         let protection = args.get(2).map(|s| *s);
 
-        println!("{} Scanning for {} value: {}", "[SCAN]".cyan(), value_type, value);
+        println!(
+            "{} Scanning for {} value: {}",
+            "[SCAN]".cyan(),
+            value_type,
+            value
+        );
 
         let params = if let Some(prot) = protection {
             json!([value_type, value, prot])
@@ -1807,14 +1962,24 @@ impl<'a, 'b> Commander<'a, 'b> {
 
         match result {
             Ok(Some(value_result)) => {
-                let count = value_result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} Found {} results", "[SCAN]".green(), count.to_string().yellow());
-                
+                let count = value_result
+                    .get("count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                println!(
+                    "{} Found {} results",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
+
                 if count > 0 {
                     if let Some(results) = value_result.get("results").and_then(|v| v.as_array()) {
                         let show_count = results.len().min(10);
                         for result in results.iter().take(show_count) {
-                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let addr = result
+                                .get("address")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             println!("  {}", addr.yellow());
                         }
                         if count > 10 {
@@ -1838,24 +2003,39 @@ impl<'a, 'b> Commander<'a, 'b> {
         let value = args[0];
         let comparison = args.get(1).unwrap_or(&"eq");
 
-        println!("{} Refining scan with value: {} ({})", "[SCAN]".cyan(), value, comparison);
+        println!(
+            "{} Refining scan with value: {} ({})",
+            "[SCAN]".cyan(),
+            value,
+            comparison
+        );
 
         // We need to know the type from the previous scan
         // For now, assume int32 as default
-        let result = self.script.exports.call(
-            "scan_next",
-            Some(json!(["int32", value, comparison]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("scan_next", Some(json!(["int32", value, comparison])));
 
         match result {
             Ok(Some(value_result)) => {
-                let count = value_result.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} {} results remaining", "[SCAN]".green(), count.to_string().yellow());
-                
+                let count = value_result
+                    .get("count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                println!(
+                    "{} {} results remaining",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
+
                 if count > 0 && count <= 20 {
                     if let Some(results) = value_result.get("results").and_then(|v| v.as_array()) {
                         for result in results {
-                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let addr = result
+                                .get("address")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             let current = result.get("currentValue");
                             if let Some(val) = current {
                                 println!("  {} = {}", addr.yellow(), val);
@@ -1873,12 +2053,19 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn scan_changed(&mut self, _args: &[&str]) -> bool {
-        let result = self.script.exports.call("scan_changed", Some(json!(["int32"])));
+        let result = self
+            .script
+            .exports
+            .call("scan_changed", Some(json!(["int32"])));
 
         match result {
             Ok(Some(value)) => {
                 let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} {} addresses changed", "[SCAN]".green(), count.to_string().yellow());
+                println!(
+                    "{} {} addresses changed",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
             }
             Ok(None) => logger::error("No response from scan_changed"),
             Err(e) => logger::error(&format!("Scan error: {}", e)),
@@ -1887,12 +2074,19 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn scan_unchanged(&mut self, _args: &[&str]) -> bool {
-        let result = self.script.exports.call("scan_unchanged", Some(json!(["int32"])));
+        let result = self
+            .script
+            .exports
+            .call("scan_unchanged", Some(json!(["int32"])));
 
         match result {
             Ok(Some(value)) => {
                 let count = value.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("{} {} addresses unchanged", "[SCAN]".green(), count.to_string().yellow());
+                println!(
+                    "{} {} addresses unchanged",
+                    "[SCAN]".green(),
+                    count.to_string().yellow()
+                );
             }
             Ok(None) => logger::error("No response from scan_unchanged"),
             Err(e) => logger::error(&format!("Scan error: {}", e)),
@@ -1901,7 +2095,10 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn scan_snapshot(&mut self, _args: &[&str]) -> bool {
-        let result = self.script.exports.call("scan_snapshot", Some(json!(["int32"])));
+        let result = self
+            .script
+            .exports
+            .call("scan_snapshot", Some(json!(["int32"])));
 
         match result {
             Ok(Some(value)) => {
@@ -1919,16 +2116,18 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn scan_results(&mut self, args: &[&str]) -> bool {
-        let offset = args.get(0)
+        let offset = args
+            .get(0)
             .and_then(|s| Self::parse_usize(s).ok())
             .unwrap_or(0);
-        let limit = args.get(1)
+        let limit = args
+            .get(1)
             .and_then(|s| Self::parse_usize(s).ok())
             .unwrap_or(50);
 
         let result = self.script.exports.call(
             "get_scan_result_values",
-            Some(json!(["int32", offset, limit]))
+            Some(json!(["int32", offset, limit])),
         );
 
         match result {
@@ -1937,13 +2136,26 @@ impl<'a, 'b> Commander<'a, 'b> {
                     if results.is_empty() {
                         println!("{}", "No scan results".dark_grey());
                     } else {
-                        println!("{} Scan results ({}-{}):", "[SCAN]".cyan(), offset, offset + results.len());
+                        println!(
+                            "{} Scan results ({}-{}):",
+                            "[SCAN]".cyan(),
+                            offset,
+                            offset + results.len()
+                        );
                         for (i, result) in results.iter().enumerate() {
-                            let addr = result.get("address").and_then(|v| v.as_str()).unwrap_or("?");
+                            let addr = result
+                                .get("address")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?");
                             let val = result.get("value");
                             let idx = offset + i;
                             if let Some(v) = val {
-                                println!("  [{}] {} = {}", idx.to_string().blue(), addr.yellow(), v);
+                                println!(
+                                    "  [{}] {} = {}",
+                                    idx.to_string().blue(),
+                                    addr.yellow(),
+                                    v
+                                );
                             } else {
                                 println!("  [{}] {}", idx.to_string().blue(), addr.yellow());
                             }
@@ -1958,24 +2170,26 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn scan_list(&mut self, args: &[&str]) -> bool {
-        let limit = args.get(0)
+        let limit = args
+            .get(0)
             .and_then(|s| Self::parse_usize(s).ok())
             .unwrap_or(100);
 
-        let result = self.script.exports.call(
-            "get_scan_result_values",
-            Some(json!(["int32", 0, limit]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("get_scan_result_values", Some(json!(["int32", 0, limit])));
 
         match result {
             Ok(Some(value)) => {
                 if let Some(results) = value.as_array() {
-                    let scan_results: Vec<VzData> = results.iter()
+                    let scan_results: Vec<VzData> = results
+                        .iter()
                         .filter_map(|r| {
                             let addr_str = r.get("address").and_then(|v| v.as_str())?;
                             let address = crate::gum::vzdata::string_to_u64(addr_str);
                             let value = r.get("value").map(|v| v.to_string());
-                            
+
                             Some(VzData::ScanResult(VzScanResult {
                                 base: new_base(VzDataType::ScanResult),
                                 address,
@@ -2028,12 +2242,14 @@ impl<'a, 'b> Commander<'a, 'b> {
                         println!("{}", "No threads found".dark_grey());
                     } else {
                         println!("{} {} threads:", "[THREADS]".cyan(), threads.len());
-                        
-                        let thread_datas: Vec<VzData> = threads.iter()
+
+                        let thread_datas: Vec<VzData> = threads
+                            .iter()
                             .filter_map(|t| {
                                 let id = t.get("id").and_then(|v| v.as_u64())?;
-                                let state = t.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
-                                
+                                let state =
+                                    t.get("state").and_then(|v| v.as_str()).unwrap_or("unknown");
+
                                 println!(
                                     "  Thread {} ({})",
                                     id.to_string().yellow(),
@@ -2059,8 +2275,7 @@ impl<'a, 'b> Commander<'a, 'b> {
     }
 
     pub(crate) fn thread_regs(&mut self, args: &[&str]) -> bool {
-        let thread_id = args.get(0)
-            .and_then(|s| s.parse::<u64>().ok());
+        let thread_id = args.get(0).and_then(|s| s.parse::<u64>().ok());
 
         let thread_id = match thread_id {
             Some(id) => id,
@@ -2068,14 +2283,13 @@ impl<'a, 'b> Commander<'a, 'b> {
                 // Try to get first thread
                 let result = self.script.exports.call("list_threads", None);
                 match result {
-                    Ok(Some(value)) => {
-                        value.as_array()
-                            .and_then(|arr| arr.first())
-                            .and_then(|t| t.get("id"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0)
-                    }
-                    _ => 0
+                    Ok(Some(value)) => value
+                        .as_array()
+                        .and_then(|arr| arr.first())
+                        .and_then(|t| t.get("id"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                    _ => 0,
                 }
             }
         };
@@ -2085,20 +2299,24 @@ impl<'a, 'b> Commander<'a, 'b> {
             return true;
         }
 
-        let result = self.script.exports.call(
-            "get_thread_context",
-            Some(json!([thread_id]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("get_thread_context", Some(json!([thread_id])));
 
         match result {
             Ok(Some(value)) => {
                 if value.is_null() {
                     println!("{}", "Thread context not available".dark_grey());
                 } else if let Some(regs) = value.as_object() {
-                    println!("{} Thread {} registers:", "[REGS]".cyan(), thread_id.to_string().yellow());
+                    println!(
+                        "{} Thread {} registers:",
+                        "[REGS]".cyan(),
+                        thread_id.to_string().yellow()
+                    );
                     for (name, val) in regs {
                         if let Some(v) = val.as_str() {
-                            println!("  {:<6} = {}", name.cyan(), v.yellow());
+                            println!("  {:<6} = {}", name.as_str().cyan(), v.yellow());
                         }
                     }
                 }
@@ -2111,7 +2329,8 @@ impl<'a, 'b> Commander<'a, 'b> {
 
     pub(crate) fn thread_stack(&mut self, args: &[&str]) -> bool {
         let thread_id = args.get(0).and_then(|s| s.parse::<u64>().ok());
-        let depth = args.get(1)
+        let depth = args
+            .get(1)
             .and_then(|s| Self::parse_usize(s).ok())
             .unwrap_or(32);
 
@@ -2121,14 +2340,13 @@ impl<'a, 'b> Commander<'a, 'b> {
             None => {
                 let result = self.script.exports.call("list_threads", None);
                 match result {
-                    Ok(Some(value)) => {
-                        value.as_array()
-                            .and_then(|arr| arr.first())
-                            .and_then(|t| t.get("id"))
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0)
-                    }
-                    _ => 0
+                    Ok(Some(value)) => value
+                        .as_array()
+                        .and_then(|arr| arr.first())
+                        .and_then(|t| t.get("id"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0),
+                    _ => 0,
                 }
             }
         };
@@ -2139,22 +2357,23 @@ impl<'a, 'b> Commander<'a, 'b> {
         }
 
         // Get thread context to find SP
-        let ctx_result = self.script.exports.call(
-            "get_thread_context",
-            Some(json!([thread_id]))
-        );
+        let ctx_result = self
+            .script
+            .exports
+            .call("get_thread_context", Some(json!([thread_id])));
 
         let sp = match ctx_result {
             Ok(Some(value)) => {
                 // Try common SP register names
-                value.get("rsp")
+                value
+                    .get("rsp")
                     .or_else(|| value.get("esp"))
                     .or_else(|| value.get("sp"))
                     .and_then(|v| v.as_str())
                     .and_then(|s| crate::gum::vzdata::string_to_u64(s).into())
                     .unwrap_or(0)
             }
-            _ => 0
+            _ => 0,
         };
 
         if sp == 0 {
@@ -2162,15 +2381,16 @@ impl<'a, 'b> Commander<'a, 'b> {
             return true;
         }
 
-        let result = self.script.exports.call(
-            "read_stack",
-            Some(json!([format!("{}", sp), depth]))
-        );
+        let result = self
+            .script
+            .exports
+            .call("read_stack", Some(json!([format!("{}", sp), depth])));
 
         match result {
             Ok(Some(value)) => {
                 if let Some(stack) = value.as_array() {
-                    println!("{} Stack @ {} (thread {}):",
+                    println!(
+                        "{} Stack @ {} (thread {}):",
                         "[STACK]".cyan(),
                         format!("{:#x}", sp).yellow(),
                         thread_id
@@ -2185,7 +2405,7 @@ impl<'a, 'b> Commander<'a, 'b> {
                         let info = match (module, symbol) {
                             (Some(m), Some(s)) => format!(" ({}: {})", m, s),
                             (Some(m), None) => format!(" ({})", m),
-                            _ => String::new()
+                            _ => String::new(),
                         };
 
                         println!(
@@ -2225,15 +2445,10 @@ impl<'a, 'b> Commander<'a, 'b> {
                                 (Some(m), Some(s), None) => format!("{}!{}", m, s),
                                 (Some(m), None, Some(o)) => format!("{} +{:#x}", m, o),
                                 (Some(m), None, None) => m.to_string(),
-                                _ => "???".to_string()
+                                _ => "???".to_string(),
                             };
 
-                            println!(
-                                "  #{:<2} {} {}",
-                                i,
-                                addr.yellow(),
-                                location.dark_grey()
-                            );
+                            println!("  #{:<2} {} {}", i, addr.yellow(), location.dark_grey());
                         }
                     }
                 }
@@ -2268,24 +2483,25 @@ impl<'a, 'b> Commander<'a, 'b> {
             }
             Err(e) => {
                 // Try to resolve as symbol name
-                let result = self.script.exports.call(
-                    "find_symbol",
-                    Some(json!([target]))
-                );
-                
+                let result = self
+                    .script
+                    .exports
+                    .call("find_symbol", Some(json!([target])));
+
                 match result {
                     Ok(Some(value)) => {
                         if value.is_null() {
                             Err(format!("Symbol not found: {}", target))
                         } else {
-                            value.get("address")
+                            value
+                                .get("address")
                                 .and_then(|v| v.as_str())
                                 .map(|s| crate::gum::vzdata::string_to_u64(s))
                                 .ok_or_else(|| format!("Invalid symbol address for: {}", target))
                         }
                     }
                     Ok(None) => Err(format!("Symbol not found: {}", target)),
-                    Err(_) => Err(e)
+                    Err(_) => Err(e),
                 }
             }
         }
