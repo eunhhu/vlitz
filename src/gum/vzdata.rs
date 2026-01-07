@@ -2,6 +2,7 @@
 use crossterm::style::Stylize;
 use std::fmt;
 
+/// Represents the type of data stored in Vlitz stores and navigators
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VzDataType {
     Pointer,
@@ -19,6 +20,216 @@ pub enum VzDataType {
     ScanResult,
     Import,
     Symbol,
+}
+
+impl fmt::Display for VzDataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VzDataType::Pointer => write!(f, "Pointer"),
+            VzDataType::Module => write!(f, "Module"),
+            VzDataType::Range => write!(f, "Range"),
+            VzDataType::Function => write!(f, "Function"),
+            VzDataType::Variable => write!(f, "Variable"),
+            VzDataType::JavaClass => write!(f, "JavaClass"),
+            VzDataType::JavaMethod => write!(f, "JavaMethod"),
+            VzDataType::ObjCClass => write!(f, "ObjCClass"),
+            VzDataType::ObjCMethod => write!(f, "ObjCMethod"),
+            VzDataType::Thread => write!(f, "Thread"),
+            VzDataType::Hook => write!(f, "Hook"),
+            VzDataType::Instruction => write!(f, "Instruction"),
+            VzDataType::ScanResult => write!(f, "ScanResult"),
+            VzDataType::Import => write!(f, "Import"),
+            VzDataType::Symbol => write!(f, "Symbol"),
+        }
+    }
+}
+
+/// Common base fields shared across all Vlitz data types
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzBase {
+    /// The type of data this object represents
+    pub data_type: VzDataType,
+    /// Whether this data has been saved to persistent storage
+    pub is_saved: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzPointer {
+    pub base: VzBase,
+    /// Memory address of the pointer
+    pub address: u64,
+    /// Size in bytes
+    pub size: usize,
+    /// Type of value pointed to
+    pub value_type: VzValueType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzModule {
+    pub base: VzBase,
+    /// Module name
+    pub name: String,
+    /// Base address in memory
+    pub address: u64,
+    /// Size in bytes
+    pub size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzRange {
+    pub base: VzBase,
+    /// Start address of the memory range
+    pub address: u64,
+    /// Size in bytes
+    pub size: usize,
+    /// Memory protection flags (e.g., "r-x", "rw-", "rwx")
+    pub protection: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzFunction {
+    pub base: VzBase,
+    /// Function name
+    pub name: String,
+    /// Entry point address in memory
+    pub address: u64,
+    /// Module containing this function
+    pub module: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzVariable {
+    pub base: VzBase,
+    /// Variable name
+    pub name: String,
+    /// Address in memory
+    pub address: u64,
+    /// Module containing this variable
+    pub module: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzJavaClass {
+    pub base: VzBase,
+    /// Java class name
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzJavaMethod {
+    pub base: VzBase,
+    /// Method name
+    pub name: String,
+    /// Class name
+    pub class: String,
+    /// Method arguments
+    pub args: Vec<String>,
+    /// Return type
+    pub return_type: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzObjCClass {
+    pub base: VzBase,
+    /// Objective-C class name
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzObjCMethod {
+    pub base: VzBase,
+    /// Method selector
+    pub name: String,
+    /// Class name
+    pub class: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzThread {
+    pub base: VzBase,
+    /// Thread ID
+    pub id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzHook {
+    pub base: VzBase,
+    /// Hook ID string
+    pub id: String,
+    /// Hook address
+    pub address: u64,
+    /// Target name if available
+    pub target_name: Option<String>,
+    /// Module name if available
+    pub module: Option<String>,
+    /// Whether hook is enabled
+    pub enabled: bool,
+    /// Hook triggers on enter
+    pub on_enter: bool,
+    /// Hook triggers on leave
+    pub on_leave: bool,
+    /// Whether to log arguments
+    pub log_args: bool,
+    /// Whether to log return value
+    pub log_retval: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzInstruction {
+    pub base: VzBase,
+    /// Instruction address
+    pub address: u64,
+    /// Instruction size in bytes
+    pub size: usize,
+    /// Instruction mnemonic
+    pub mnemonic: String,
+    /// Instruction operands
+    pub op_str: String,
+    /// Instruction bytes
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzScanResult {
+    pub base: VzBase,
+    /// Address where value was found
+    pub address: u64,
+    /// Size in bytes
+    pub size: usize,
+    /// Value found at address
+    pub value: Option<String>,
+    /// Pattern that matched
+    pub pattern: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzImport {
+    pub base: VzBase,
+    /// Import name
+    pub name: String,
+    /// Address in memory if available
+    pub address: Option<u64>,
+    /// Import type (function, variable, etc.)
+    pub import_type: String,
+    /// Slot number
+    pub slot: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VzSymbol {
+    pub base: VzBase,
+    /// Symbol name
+    pub name: String,
+    /// Address in memory
+    pub address: u64,
+    /// Symbol type (function, variable, etc.)
+    pub symbol_type: String,
+    /// Size if available
+    pub size: Option<usize>,
+    /// Whether symbol is global
+    pub is_global: bool,
+    /// Section name if available
+    pub section: Option<String>,
 }
 
 impl fmt::Display for VzDataType {
@@ -478,7 +689,8 @@ pub struct VzInstruction {
 
 impl fmt::Display for VzInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let bytes_hex = self.bytes
+        let bytes_hex = self
+            .bytes
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<Vec<_>>()
@@ -554,7 +766,8 @@ pub struct VzImport {
 
 impl fmt::Display for VzImport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let addr_str = self.address
+        let addr_str = self
+            .address
             .map(|a| format!("{:#x}", a))
             .unwrap_or_else(|| "?".to_string());
         write!(
@@ -597,9 +810,7 @@ pub struct VzSymbol {
 
 impl fmt::Display for VzSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let size_str = self.size
-            .map(|s| format!("({:#x})", s))
-            .unwrap_or_default();
+        let size_str = self.size.map(|s| format!("({:#x})", s)).unwrap_or_default();
         let global_str = if self.is_global { "G" } else { "L" };
         write!(
             f,
