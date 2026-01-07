@@ -19,5 +19,5 @@ pub fn get_device<'a>(manager: &'a Manager, args: &ConnectionArgs) -> Option<Dev
         device_manager.get_local_device()
     };
 
-    device.ok()
+    device
 }
