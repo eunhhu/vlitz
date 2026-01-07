@@ -1,5 +1,4 @@
 // src/gum/session.rs
-mod session_tests;
 
 use super::commander::Commander;
 use crossterm::{cursor, style::Stylize, terminal, ExecutableCommand};

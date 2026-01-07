@@ -182,34 +182,13 @@ impl frida::ScriptHandler for Handler {
     fn on_message(&mut self, message: &Message, _data: Option<Vec<u8>>) {
         match message {
             Message::Send(s) => {
-                match &s.payload {
-                    frida::MessagePayload::Object(payload) => {
-                        if payload.contains_key("type") {
-                            if let Some(formatted) = Self::format_hook_event(&s.payload) {
-                                println!("{}", formatted);
-                                return;
-                            }
-                        }
+                // Frida's SendPayload has 'type' field and 'returns' contains the JSON payload
+                if s.payload.r#type == "send" {
+                    if let Some(formatted) = Self::format_hook_event(&s.payload.returns) {
+                        println!("{}", formatted);
+                        return;
                     }
-                    frida::MessagePayload::Bytes(_)
-                    | frida::MessagePayload::Invalid(_)
-                    | frida::MessagePayload::None => {
-                    }
-                    _ => {}
                 }
-                // Default send message handling
-                println!("{} {:?}", "[Send]".green(), s.payload);
-            }
-                        }
-                    }
-                    frida::MessagePayload::Bytes(_)
-                    | frida::MessagePayload::Invalid(_)
-                    | frida::MessagePayload::None => {
-                        // Fall through to default handling
-                    }
-                    _ => {}
-                }
-                // Default send message handling
                 println!("{} {:?}", "[Send]".green(), s.payload);
             }
             Message::Log(log) => match log.level {
