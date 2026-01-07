@@ -93,8 +93,7 @@ fn handle_kill(manager: &Manager, args: &cli::KillArgs) {
 }
 
 fn handle_devices(manager: &Manager) {
-    let device_manager = manager.device_manager();
-    let devices = device_manager.enumerate_all_devices();
+    let devices = manager.device_manager.enumerate_all_devices();
     println!(
         "{} {} {}",
         lengthed("Type", 6).cyan().bold(),
