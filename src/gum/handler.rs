@@ -193,25 +193,6 @@ impl frida::ScriptHandler for Handler {
                     }
                     frida::MessagePayload::Bytes(_)
                     | frida::MessagePayload::Invalid(_)
-                    | frida::MessagePayload::None => {}
-                    _ => {}
-                }
-                // Default send message handling
-                println!("{} {:?}", "[Send]".green(), s.payload);
-            }
-            Message::Log(log) => match log.level {
-                MessageLogLevel::Info => println!("{} {}", "[Info]".cyan(), log.payload),
-                MessageLogLevel::Debug => println!("{} {}", "[Debug]".magenta(), log.payload),
-                MessageLogLevel::Warning => println!("{} {}", "[Warn]".yellow(), log.payload),
-                MessageLogLevel::Error => logger::error(&log.payload),
-            },
-            Message::Error(err) => logger::error(&format!("{}\n{}", err.description, err.stack)),
-            Message::Other(v) => println!("{} {:?}", "[Other]".grey(), v),
-        }
-                        }
-                    }
-                    frida::MessagePayload::Bytes(_)
-                    | frida::MessagePayload::Invalid(_)
                     | frida::MessagePayload::None => {
                     }
                     _ => {}
