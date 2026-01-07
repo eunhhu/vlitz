@@ -1,6 +1,6 @@
 [package]
 name = "vlitz"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "A dynamic debugger CLI built on Frida for runtime inspection and instrumentation"
