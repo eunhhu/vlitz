@@ -5,8 +5,8 @@ use frida::{Device, DeviceType};
 /// Obtains a device based on connection arguments
 ///
 /// Returns None if the specified device is not found or connection fails
-pub fn get_device(manager: &Manager, args: &ConnectionArgs) -> Option<Device<'_>> {
-    let device_manager = manager.device_manager();
+pub fn get_device<'a>(manager: &'a Manager, args: &ConnectionArgs) -> Option<Device<'a>> {
+    let device_manager = &manager.device_manager;
     let device = if args.host.is_some() {
         device_manager.get_device_by_type(DeviceType::Remote)
     } else if args.usb {
