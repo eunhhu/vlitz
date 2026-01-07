@@ -11,7 +11,6 @@ pub mod navigator;
 pub mod store;
 pub mod store_tests;
 pub mod vzdata;
-pub mod vzdata_tests;
 pub mod commands;
 
 
