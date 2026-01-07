@@ -409,11 +409,61 @@ impl<'a, 'b> Commander<'a, 'b> {
                         .map_err(|e| format!("Selector '{}': search in explicitly specified 'field' store failed: {}", selector_str, e))
                         .and_then(|data| if data.is_empty() { Err(format!("Selector '{}': no items found in explicitly specified 'field' store.", selector_str)) } else { Ok(data) })
                 } else {
-                    Err(format!(
-                        "Unknown explicitly specified store: {}",
-                        store_name
-                    ))
+                    // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
+                    match self.lib.get_data_by_selection(selector_str) {
+                        Ok(lib_data) => {
+                            if lib_data.is_empty() {
+                                // Default "lib" search was empty
+                                if selector_is_numeric {
+                                    // Selector is numeric, fallback to "field"
+                                    self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                        format!("Selector '{}': no items from 'lib' (default), and 'field' (fallback) search failed: {}", selector_str, field_e)
+                                    })
+                                } else {
+                                    // Selector non-numeric, no fallback
+                                    Err(format!("Selector '{}': no items found in 'lib' (default). Non-numeric selectors do not fall back.", selector_str))
+                                }
+                            } else {
+                                // Default "lib" search successful
+                                Ok(lib_data)
+                            }
+                        }
+                        Err(lib_e) => {
+                            // Error from lib search
+                            Err(format!("Selector '{}': search in explicitly specified 'lib' store failed: {}", selector_str, lib_e))
+                        }
+                    }
                 }
+            } else {
+                // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
+                match self.lib.get_data_by_selection(selector_str) {
+                    Ok(lib_data) => {
+                        if lib_data.is_empty() {
+                            // Default "lib" search was empty
+                            if selector_is_numeric {
+                                // Selector is numeric, fallback to "field"
+                                self.field.get_data_by_selection(selector_str).map_err(|field_e| {
+                                        format!("Selector '{}': no items from 'lib' (default), and 'field' (fallback) search failed: {}", selector_str, field_e)
+                                    })
+                                } else {
+                                    // Selector non-numeric, no fallback
+                                    Err(format!("Selector '{}': no items found in 'lib' (default). Non-numeric selectors do not fall back.", selector_str))
+                                }
+                            } else {
+                                // Default "lib" search successful
+                                Ok(lib_data)
+                            }
+                        }
+                        Err(lib_e) => {
+                            // Error from lib search
+                            Err(format!("Selector '{}': search in explicitly specified 'lib' store failed: {}", selector_str, lib_e))
+                        }
+                    }
+                }
+            } else {
+                Err(format!("Invalid selector syntax: {}", s))
+            }
+    }
             } else {
                 // NO store specified, default to "lib" with potential fallback for NUMERIC selectors
                 match self.lib.get_data_by_selection(selector_str) {
