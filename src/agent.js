@@ -1160,18 +1160,25 @@ rpc.exports = {
             // Save original bytes
             const original = Array.from(new Uint8Array(target.readByteArray(bytes.length)));
             
-            // Make writable if needed
+            // Save original protection
             const originalProtection = range.protection;
+            
+            // Make writable if needed - only add 'w' permission
+            // Avoid using 'rwx' which is a security risk
             const needsProtectionChange = !originalProtection.includes('w');
             
             if (needsProtectionChange) {
-                Memory.protect(target, bytes.length, 'rwx');
+                // Add write permission to existing protection
+                const hasRead = originalProtection.includes('r');
+                const hasExec = originalProtection.includes('x');
+                const newProtection = (hasRead ? 'r' : '') + 'w' + (hasExec ? 'x' : '');
+                Memory.protect(target, bytes.length, newProtection);
             }
             
             // Write new bytes
             target.writeByteArray(bytes);
             
-            // Restore protection
+            // Restore protection (remove write permission)
             if (needsProtectionChange) {
                 Memory.protect(target, bytes.length, originalProtection);
             }
