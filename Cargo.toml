@@ -2,6 +2,15 @@
 name = "vlitz"
 version = "0.1.0"
 edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A dynamic debugger CLI built on Frida for runtime inspection and instrumentation"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/eunhhu/vlitz"
+homepage = "https://github.com/eunhhu/vlitz"
+documentation = "https://github.com/eunhhu/vlitz"
+keywords = ["frida", "debugger", "instrumentation", "runtime", "analysis"]
+categories = ["development-tools", "development-tools::debugging", "command-line-utilities"]
+readme = "README.md"
 
 [dependencies]
 clap = { version = "4.5.38", features = ["derive", "unstable-styles"] }
