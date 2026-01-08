@@ -46,8 +46,14 @@ jobs:
       - name: Run tests
         run: cargo test --all-features
 
-      - name: Verify package
-        run: cargo package --allow-dirty
+      - name: Commit Cargo.lock changes if any
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          if git diff --cached --name-only | grep -q Cargo.lock; then
+            git commit -m "chore: update Cargo.lock for release" || true
+          fi
 
       - name: Publish to crates.io
         run: cargo publish
