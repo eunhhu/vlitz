@@ -23,25 +23,25 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: vlitz
-            asset_name: vlitz-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz
+            archive_ext: tar.gz
           
           # macOS x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact_name: vlitz
-            asset_name: vlitz-${{ github.ref_name }}-x86_64-apple-darwin.tar.gz
+            archive_ext: tar.gz
           
           # macOS ARM64
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: vlitz
-            asset_name: vlitz-${{ github.ref_name }}-aarch64-apple-darwin.tar.gz
+            archive_ext: tar.gz
           
           # Windows x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: vlitz.exe
-            asset_name: vlitz-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip
+            archive_ext: zip
 
     steps:
       - name: Checkout code
@@ -76,6 +76,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-target-
 
+      - name: Set asset name
+        id: asset
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "name=vlitz-${VERSION}-${{ matrix.target }}.${{ matrix.archive_ext }}" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
@@ -87,14 +94,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.asset_name }} ${{ matrix.artifact_name }}
+          tar czf ../../../${{ steps.asset.outputs.name }} ${{ matrix.artifact_name }}
           cd -
 
       - name: Create archive (Windows)
         if: runner.os == 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          7z a ../../../${{ matrix.asset_name }} ${{ matrix.artifact_name }}
+          7z a ../../../${{ steps.asset.outputs.name }} ${{ matrix.artifact_name }}
           cd -
         shell: bash
 
@@ -103,6 +110,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: ./${{ matrix.asset_name }}
+          files: ./${{ steps.asset.outputs.name }}
           generate_release_notes: true
           make_latest: true
