@@ -16,7 +16,17 @@ fn parse_command(input: &str) -> Vec<String> {
     let re = Regex::new(r#"("[^"]*")|('[^']*')|(\S+)"#).expect("Failed to compile command regex");
 
     re.find_iter(input)
-        .map(|m| m.as_str().to_string())
+        .map(|m| {
+            let s = m.as_str();
+            // Strip surrounding quotes if present
+            if (s.starts_with('"') && s.ends_with('"'))
+                || (s.starts_with('\'') && s.ends_with('\''))
+            {
+                s[1..s.len() - 1].to_string()
+            } else {
+                s.to_string()
+            }
+        })
         .collect()
 }
 
