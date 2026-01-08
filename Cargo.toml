@@ -2,6 +2,8 @@
 name = "vlitz"
 version = "0.1.0"
 edition = "2021"
+description = "A strong dynamic debugger CLI tool based on Frida"
+license = "MIT"
 
 [dependencies]
 clap = { version = "4.5.38", features = ["derive", "unstable-styles"] }
