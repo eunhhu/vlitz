@@ -1,6 +1,6 @@
 [package]
 name = "vlitz"
-version = "0.1.8"
+version = "0.2.1"
 edition = "2021"
 description = "A strong dynamic debugger CLI tool based on Frida"
 license = "MIT"
