@@ -232,7 +232,7 @@ mod tests {
             crate::gum::filter::FilterCondition {
                 key: "address".into(),
                 operator: crate::gum::filter::FilterOperator::GreaterEqual,
-                value: crate::gum::filter::FilterValue::Number((0x2000 as u64).into()),
+                value: crate::gum::filter::FilterValue::Number(0x2000 as f64),
             },
         )]);
 

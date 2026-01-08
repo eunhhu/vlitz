@@ -12,6 +12,9 @@ pub mod store;
 pub mod store_tests;
 pub mod vzdata;
 
+pub use store::Store;
+pub use vzdata::VzData;
+
 use std::process::exit;
 
 use crate::core::cli::TargetArgs;
