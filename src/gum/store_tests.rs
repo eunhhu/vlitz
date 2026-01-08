@@ -155,13 +155,13 @@ mod tests {
         assert_eq!(current_data.len(), 3);
 
         if let VzData::Module(r#mod) = &current_data[0] {
-            assert_eq!(mod.address, 0x1000);
+            assert_eq!(r#mod.address, 0x1000);
         }
         if let VzData::Module(r#mod) = &current_data[1] {
-            assert_eq!(mod.address, 0x2000);
+            assert_eq!(r#mod.address, 0x2000);
         }
         if let VzData::Module(r#mod) = &current_data[2] {
-            assert_eq!(mod.address, 0x3000);
+            assert_eq!(r#mod.address, 0x3000);
         }
     }
 
@@ -273,13 +273,13 @@ mod tests {
         assert_eq!(current_data.len(), 3);
 
         if let VzData::Module(r#mod) = &current_data[0] {
-            assert_eq!(mod.name, "first");
+            assert_eq!(r#mod.name, "first");
         }
         if let VzData::Module(r#mod) = &current_data[1] {
-            assert_eq!(mod.name, "third");
+            assert_eq!(r#mod.name, "third");
         }
         if let VzData::Module(r#mod) = &current_data[2] {
-            assert_eq!(mod.name, "second");
+            assert_eq!(r#mod.name, "second");
         }
     }
 
@@ -307,13 +307,13 @@ mod tests {
         // Verify remaining items are 0, 3, 4
         let current_data = store.get_current_data();
         if let VzData::Module(r#mod) = &current_data[0] {
-            assert_eq!(mod.name, "module_0");
+            assert_eq!(r#mod.name, "module_0");
         }
         if let VzData::Module(r#mod) = &current_data[1] {
-            assert_eq!(mod.name, "module_3");
+            assert_eq!(r#mod.name, "module_3");
         }
         if let VzData::Module(r#mod) = &current_data[2] {
-            assert_eq!(mod.name, "module_4");
+            assert_eq!(r#mod.name, "module_4");
         }
     }
 
