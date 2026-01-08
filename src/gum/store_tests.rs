@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gum::Store;
+    use crate::gum::VzData;
 
     #[test]
     fn test_store_pagination() {
