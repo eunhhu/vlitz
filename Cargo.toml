@@ -4,6 +4,13 @@ version = "0.2.2"
 edition = "2021"
 description = "A strong dynamic debugger CLI tool based on Frida"
 license = "MIT"
+rust-version = "1.70"
+authors = ["eunhhu"]
+repository = "https://github.com/eunhhu/vlitz"
+homepage = "https://github.com/eunhhu/vlitz"
+readme = "README.md"
+keywords = ["frida", "debugger", "cli", "reverse-engineering", "instrumentation"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [dependencies]
 clap = { version = "4.5.38", features = ["derive", "unstable-styles"] }

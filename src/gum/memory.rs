@@ -801,7 +801,11 @@ fn determine_endianness(
 }
 
 // Decode a value of the given type from a byte slice into a plain string (without colors)
-fn decode_value_to_string_from_bytes(value_type: &VzValueType, slice: &[u8], little_endian: bool) -> String {
+fn decode_value_to_string_from_bytes(
+    value_type: &VzValueType,
+    slice: &[u8],
+    little_endian: bool,
+) -> String {
     // Helper to safely copy bytes into arrays
     fn bytes_to_array<const N: usize>(slice: &[u8]) -> [u8; N] {
         let mut arr = [0u8; N];
@@ -820,42 +824,74 @@ fn decode_value_to_string_from_bytes(value_type: &VzValueType, slice: &[u8], lit
         }
         VzValueType::Short | VzValueType::Int16 => {
             let arr = bytes_to_array::<2>(slice);
-            let v = if little_endian { i16::from_le_bytes(arr) } else { i16::from_be_bytes(arr) };
+            let v = if little_endian {
+                i16::from_le_bytes(arr)
+            } else {
+                i16::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::UShort | VzValueType::UInt16 => {
             let arr = bytes_to_array::<2>(slice);
-            let v = if little_endian { u16::from_le_bytes(arr) } else { u16::from_be_bytes(arr) };
+            let v = if little_endian {
+                u16::from_le_bytes(arr)
+            } else {
+                u16::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::Int | VzValueType::Int32 => {
             let arr = bytes_to_array::<4>(slice);
-            let v = if little_endian { i32::from_le_bytes(arr) } else { i32::from_be_bytes(arr) };
+            let v = if little_endian {
+                i32::from_le_bytes(arr)
+            } else {
+                i32::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::UInt | VzValueType::UInt32 => {
             let arr = bytes_to_array::<4>(slice);
-            let v = if little_endian { u32::from_le_bytes(arr) } else { u32::from_be_bytes(arr) };
+            let v = if little_endian {
+                u32::from_le_bytes(arr)
+            } else {
+                u32::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::Long | VzValueType::Int64 => {
             let arr = bytes_to_array::<8>(slice);
-            let v = if little_endian { i64::from_le_bytes(arr) } else { i64::from_be_bytes(arr) };
+            let v = if little_endian {
+                i64::from_le_bytes(arr)
+            } else {
+                i64::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::ULong | VzValueType::UInt64 => {
             let arr = bytes_to_array::<8>(slice);
-            let v = if little_endian { u64::from_le_bytes(arr) } else { u64::from_be_bytes(arr) };
+            let v = if little_endian {
+                u64::from_le_bytes(arr)
+            } else {
+                u64::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::Float | VzValueType::Float32 => {
             let arr = bytes_to_array::<4>(slice);
-            let v = if little_endian { f32::from_le_bytes(arr) } else { f32::from_be_bytes(arr) };
+            let v = if little_endian {
+                f32::from_le_bytes(arr)
+            } else {
+                f32::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::Double | VzValueType::Float64 => {
             let arr = bytes_to_array::<8>(slice);
-            let v = if little_endian { f64::from_le_bytes(arr) } else { f64::from_be_bytes(arr) };
+            let v = if little_endian {
+                f64::from_le_bytes(arr)
+            } else {
+                f64::from_be_bytes(arr)
+            };
             v.to_string()
         }
         VzValueType::Bool | VzValueType::Boolean => {
@@ -864,7 +900,11 @@ fn decode_value_to_string_from_bytes(value_type: &VzValueType, slice: &[u8], lit
         }
         VzValueType::Pointer => {
             let arr = bytes_to_array::<8>(slice);
-            let v = if little_endian { u64::from_le_bytes(arr) } else { u64::from_be_bytes(arr) };
+            let v = if little_endian {
+                u64::from_le_bytes(arr)
+            } else {
+                u64::from_be_bytes(arr)
+            };
             format!("{:#018x}", v)
         }
         // For these types, view uses hex-bytes mode; fallback to single byte display string
