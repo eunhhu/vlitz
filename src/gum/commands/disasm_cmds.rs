@@ -9,22 +9,24 @@ pub(crate) fn build() -> Vec<Command> {
     cmds.push(Command::new(
         "disas",
         "Disassemble instructions at address",
-        vec!["dis", "u"],  // 'u' is common in debuggers for unassemble
+        vec!["dis", "u"], // 'u' is common in debuggers for unassemble
         vec![
             CommandArg::optional("target", "Address, selector, or function name"),
-            CommandArg::optional("count", "Number of instructions to disassemble (default 20)"),
+            CommandArg::optional(
+                "count",
+                "Number of instructions to disassemble (default 20)",
+            ),
         ],
-        vec![
-            SubCommand::new(
-                "func",
-                "Disassemble an entire function until return",
-                vec![
-                    CommandArg::optional("target", "Address or selector of function"),
-                ],
-                |c, a| Commander::disas_function(c, a),
-            )
-            .alias("f"),
-        ],
+        vec![SubCommand::new(
+            "func",
+            "Disassemble an entire function until return",
+            vec![CommandArg::optional(
+                "target",
+                "Address or selector of function",
+            )],
+            |c, a| Commander::disas_function(c, a),
+        )
+        .alias("f")],
         Some(|c, a| Commander::disas(c, a)),
     ));
 
@@ -54,9 +56,7 @@ pub(crate) fn build() -> Vec<Command> {
     patch_subs.push(SubCommand::new(
         "restore",
         "Restore original bytes at address",
-        vec![
-            CommandArg::required("target", "Address or selector"),
-        ],
+        vec![CommandArg::required("target", "Address or selector")],
         |c, a| Commander::patch_restore(c, a),
     ));
 
