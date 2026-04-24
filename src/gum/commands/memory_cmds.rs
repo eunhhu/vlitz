@@ -10,7 +10,10 @@ pub(crate) fn build() -> Vec<Command> {
     list_subs.push(SubCommand::new(
         "modules",
         "List process modules into Field store",
-        vec![CommandArg::optional("filter", "Optional name filter (substring)")],
+        vec![CommandArg::optional(
+            "filter",
+            "Optional name filter (substring)",
+        )],
         |c, a| Commander::list_modules(c, a),
     ));
     list_subs.push(SubCommand::new(
@@ -18,7 +21,7 @@ pub(crate) fn build() -> Vec<Command> {
         "List memory ranges into Field store",
         vec![
             CommandArg::optional("protect", "Protection filter, e.g. r-x, rw-"),
-            CommandArg::optional("filter", "Optional name filter (substring)")
+            CommandArg::optional("filter", "Optional name filter (substring)"),
         ],
         |c, a| Commander::list_ranges(c, a),
     ));

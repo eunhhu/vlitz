@@ -43,7 +43,10 @@ pub(crate) fn build() -> Vec<Command> {
         "sub",
         "Subtract an offset from the current navigator address",
         vec![],
-        vec![CommandArg::required("offset", "Offset to subtract (hex or dec)")],
+        vec![CommandArg::required(
+            "offset",
+            "Offset to subtract (hex or dec)",
+        )],
         vec![],
         Some(|c, a| Commander::sub(c, a)),
     ));
@@ -53,7 +56,10 @@ pub(crate) fn build() -> Vec<Command> {
         "goto",
         "Jump navigator to an absolute address",
         vec![],
-        vec![CommandArg::required("address", "Address to jump to (hex or dec)")],
+        vec![CommandArg::required(
+            "address",
+            "Address to jump to (hex or dec)",
+        )],
         vec![],
         Some(|c, a| Commander::goto(c, a)),
     ));
