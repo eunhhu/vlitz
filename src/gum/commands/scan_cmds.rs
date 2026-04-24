@@ -12,7 +12,10 @@ pub(crate) fn build() -> Vec<Command> {
         "Scan for byte pattern (hex with ?? wildcards: 'AA BB ?? CC')",
         vec![
             CommandArg::required("pattern", "Byte pattern to search"),
-            CommandArg::optional("protection", "Memory protection filter (e.g., 'r--', 'rw-')"),
+            CommandArg::optional(
+                "protection",
+                "Memory protection filter (e.g., 'r--', 'rw-')",
+            ),
         ],
         |c, a| Commander::scan_bytes(c, a),
     ));
@@ -47,7 +50,10 @@ pub(crate) fn build() -> Vec<Command> {
             "Refine scan results with new value",
             vec![
                 CommandArg::required("value", "New value to filter by"),
-                CommandArg::optional("comparison", "Comparison: eq, ne, gt, lt, ge, le (default: eq)"),
+                CommandArg::optional(
+                    "comparison",
+                    "Comparison: eq, ne, gt, lt, ge, le (default: eq)",
+                ),
             ],
             |c, a| Commander::scan_next(c, a),
         )
@@ -92,9 +98,10 @@ pub(crate) fn build() -> Vec<Command> {
         SubCommand::new(
             "list",
             "List scan results and load into Field store",
-            vec![
-                CommandArg::optional("limit", "Max results to load (default 100)"),
-            ],
+            vec![CommandArg::optional(
+                "limit",
+                "Max results to load (default 100)",
+            )],
             |c, a| Commander::scan_list(c, a),
         )
         .alias("ls"),
@@ -120,12 +127,9 @@ pub(crate) fn build() -> Vec<Command> {
     let mut thread_subs: Vec<SubCommand> = Vec::new();
 
     thread_subs.push(
-        SubCommand::new(
-            "list",
-            "List all threads in the process",
-            vec![],
-            |c, a| Commander::thread_list(c, a),
-        )
+        SubCommand::new("list", "List all threads in the process", vec![], |c, a| {
+            Commander::thread_list(c, a)
+        })
         .alias("ls"),
     );
 
@@ -133,7 +137,10 @@ pub(crate) fn build() -> Vec<Command> {
         SubCommand::new(
             "regs",
             "Show registers for a thread",
-            vec![CommandArg::optional("thread_id", "Thread ID (default: current)")],
+            vec![CommandArg::optional(
+                "thread_id",
+                "Thread ID (default: current)",
+            )],
             |c, a| Commander::thread_regs(c, a),
         )
         .alias("r"),
@@ -156,7 +163,10 @@ pub(crate) fn build() -> Vec<Command> {
         SubCommand::new(
             "backtrace",
             "Show backtrace for a thread",
-            vec![CommandArg::optional("thread_id", "Thread ID (default: current)")],
+            vec![CommandArg::optional(
+                "thread_id",
+                "Thread ID (default: current)",
+            )],
             |c, a| Commander::thread_backtrace(c, a),
         )
         .alias("bt"),

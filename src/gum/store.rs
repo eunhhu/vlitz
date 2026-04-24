@@ -377,10 +377,7 @@ impl Store {
         false
     }
 
-    fn get_field_value_for_filtering(
-        vz_data_item: &VzData,
-        key: &str,
-    ) -> Option<FilterValue> {
+    fn get_field_value_for_filtering(vz_data_item: &VzData, key: &str) -> Option<FilterValue> {
         match key.to_lowercase().as_str() {
             "name" => match vz_data_item {
                 VzData::Module(m) => Some(FilterValue::String(m.name.clone())),

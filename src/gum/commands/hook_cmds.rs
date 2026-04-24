@@ -13,7 +13,10 @@ pub(crate) fn build() -> Vec<Command> {
             "Add a hook to target address or function",
             vec![
                 CommandArg::required("target", "Address, selector, or function name"),
-                CommandArg::optional("options", "Hook options: -e (enter) -l (leave) -a (args) -r (retval) -b (backtrace)"),
+                CommandArg::optional(
+                    "options",
+                    "Hook options: -e (enter) -l (leave) -a (args) -r (retval) -b (backtrace)",
+                ),
             ],
             |c, a| Commander::hook_add(c, a),
         )
@@ -24,19 +27,19 @@ pub(crate) fn build() -> Vec<Command> {
         SubCommand::new(
             "remove",
             "Remove a hook by ID",
-            vec![CommandArg::required("id", "Hook ID to remove (e.g., hook_0)")],
+            vec![CommandArg::required(
+                "id",
+                "Hook ID to remove (e.g., hook_0)",
+            )],
             |c, a| Commander::hook_remove(c, a),
         )
         .alias("rm"),
     );
 
     hook_subs.push(
-        SubCommand::new(
-            "list",
-            "List all active hooks",
-            vec![],
-            |c, a| Commander::hook_list(c, a),
-        )
+        SubCommand::new("list", "List all active hooks", vec![], |c, a| {
+            Commander::hook_list(c, a)
+        })
         .alias("ls"),
     );
 

@@ -478,7 +478,8 @@ pub struct VzInstruction {
 
 impl fmt::Display for VzInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let bytes_hex = self.bytes
+        let bytes_hex = self
+            .bytes
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<Vec<_>>()
@@ -554,7 +555,8 @@ pub struct VzImport {
 
 impl fmt::Display for VzImport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let addr_str = self.address
+        let addr_str = self
+            .address
             .map(|a| format!("{:#x}", a))
             .unwrap_or_else(|| "?".to_string());
         write!(
@@ -597,9 +599,7 @@ pub struct VzSymbol {
 
 impl fmt::Display for VzSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let size_str = self.size
-            .map(|s| format!("({:#x})", s))
-            .unwrap_or_default();
+        let size_str = self.size.map(|s| format!("({:#x})", s)).unwrap_or_default();
         let global_str = if self.is_global { "G" } else { "L" };
         write!(
             f,

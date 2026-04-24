@@ -1,6 +1,16 @@
+<div align="center">
+
 # Vlitz
 
-A strong dynamic debugger CLI tool based on [Frida](https://frida.re/)
+**A strong, cross-platform dynamic debugger CLI tool built on [Frida](https://frida.re/).**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/vlitz.svg?logo=rust&logoColor=white&color=dea584)](https://crates.io/crates/vlitz)
+[![Rust](https://img.shields.io/badge/Rust-1.70+-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+
+</div>
+
+---
 
 ## Overview
 
@@ -25,7 +35,7 @@ Vlitz is a powerful command-line interface tool that leverages Frida's dynamic i
 ### From Source
 
 ```bash
-git clone https://github.com/your-username/vlitz.git
+git clone https://github.com/eunhhu/vlitz.git
 cd vlitz
 cargo build --release
 ```
@@ -172,7 +182,7 @@ cargo clippy
 
 ## License
 
-[Add your license information here]
+`vlitz` is released under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
@@ -183,7 +193,7 @@ cargo clippy
 
 If you encounter any issues or have questions, please:
 
-1. Check the [Issues](https://github.com/your-username/vlitz/issues) page
+1. Check the [Issues](https://github.com/eunhhu/vlitz/issues) page
 2. Create a new issue with detailed information about your problem
 3. Include your operating system, Rust version, and steps to reproduce
 
