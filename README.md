@@ -1,203 +1,138 @@
-<div align="center">
-
 # Vlitz
 
-**A strong, cross-platform dynamic debugger CLI tool built on [Frida](https://frida.re/).**
+A cross-platform dynamic debugger CLI built on [Frida](https://frida.re/), for reverse engineers who want an interactive shell to inspect, scan, hook and patch a running process.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![crates.io](https://img.shields.io/crates/v/vlitz.svg?logo=rust&logoColor=white&color=dea584)](https://crates.io/crates/vlitz)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-DEA584?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 
-</div>
-
----
-
-## Overview
-
-Vlitz is a powerful command-line interface tool that leverages Frida's dynamic instrumentation capabilities to provide advanced debugging and analysis features for applications across multiple platforms.
+**Status:** Active — published on crates.io (v0.2.2). The interactive session commands below are implemented; automated tests cover only the store/data layer, and most verification has been manual against real processes.
 
 ## Features
 
-- **Dynamic Process Analysis**: Attach to running processes and analyze their behavior in real-time
-- **Cross-Platform Support**: Works on Windows, macOS, Linux, iOS, and Android
-- **Multiple Connection Methods**: Connect via USB, remote servers, or local devices
-- **Process Management**: List, filter, and manage target processes
-- **Interactive Shell**: Provides an interactive environment for dynamic analysis
-- **Shell Completion**: Built-in shell completion support for improved productivity
+- Attach to a process by name, PID, app identifier, or spawn an executable (`-f`)
+- Connect to the local device, a USB device (`-U`), a remote frida-server (`-R` / `-H HOST`), or a device by ID (`-D`)
+- `ps`, `kill`, `devices` subcommands for process and device management
+- Interactive session after attaching, with:
+  - **Enumeration** — `list modules|ranges|functions|variables` into a paged "Field" working set
+  - **Stores** — `field` and `lib` working sets with paging, sorting, filtering, move/remove/save
+  - **Navigation** — `select`, `deselect`, `add`, `sub`, `goto` to move an address cursor
+  - **Memory** — `view`, `read`, `write` at an address or selection
+  - **Scanning** — `scan bytes|string|value|next|changed|unchanged|snapshot|results|list|clear`, plus `thread list`
+  - **Hooking** — `hook add|remove|list|enable|disable|clear`
+  - **Disassembly / patching** — `disas`, `disas func`, `patch bytes|nop|restore`, `nop`
+  - `debug exports`, `help`, `clear`, `exit`
+- Shell completion scripts via `vlitz completions <shell>`
 
-## Installation
+## How it works
 
-### Prerequisites
+`src/main.rs` parses the CLI (`src/core/cli.rs`, clap) and dispatches in `src/core/mod.rs`. `core/actions.rs` resolves the Frida device from the connection flags; `core/manager.rs`, `ps.rs` and `kill.rs` implement process listing and termination.
+
+For `attach`, `src/gum/mod.rs` creates a Frida session, injects the embedded JavaScript agent `src/agent.js`, and hands control to `gum/session.rs`, which runs the read-eval loop. `gum/commander.rs` holds session state (navigator, `field` and `lib` stores) and dispatches to command groups in `gum/commands/` (`nav_cmds`, `store_cmds`, `memory_cmds`, `hook_cmds`, `disasm_cmds`, `scan_cmds`). Each command calls into the agent via Frida RPC; results flow back as JSON (`gum/handler.rs`) and are rendered as tables (`gum/store.rs`, `gum/vzdata.rs`, `util/format.rs`).
+
+## Tech stack
+
+- Language: Rust (edition 2021, MSRV 1.70)
+- Instrumentation: `frida` / `frida-sys` 0.17 with the `auto-download` feature (downloads the matching Frida Gum devkit at build time)
+- CLI: `clap` (derive) + `clap_complete`
+- Terminal: `crossterm`, `ctrlc`
+- Serialization: `serde`, `serde_json`
+- CI: GitHub Actions — `ci.yml` (fmt, clippy, build, test), `release.yml` (cross-platform binaries on `v*` tags), `publish-crates.yml` (crates.io on `v*` tags)
+
+## Getting started
+
+### Requirements
 
 - Rust 1.70 or later
-- Frida (automatically downloaded when using the `auto-download` feature)
+- A C toolchain plus `pkg-config`, `clang` and `libclang-dev` (needed by `frida-sys` bindgen on Linux; see `.github/workflows/ci.yml`)
+- A running `frida-server` on the target device for USB/remote use
 
-### From Source
+### Install
+
+From crates.io:
+
+```bash
+cargo install vlitz
+```
+
+From source:
 
 ```bash
 git clone https://github.com/eunhhu/vlitz.git
 cd vlitz
 cargo build --release
+# binary at target/release/vlitz
 ```
 
-The binary will be available at `target/release/vlitz`
+Prebuilt archives for Linux, macOS and Windows are attached to GitHub Releases by `release.yml`.
 
-## Usage
-
-### Basic Commands
+### Run
 
 ```bash
-# Show help
 vlitz --help
+vlitz devices                 # list Frida devices
+vlitz ps                      # list local processes
+vlitz ps -s pid chrome        # filter by name, sort by PID
+vlitz -U ps                   # processes on a USB device
+vlitz -H 192.168.0.10 ps      # processes on a remote frida-server
 
-# List processes
-vlitz ps
+vlitz attach -n notepad.exe   # attach by name
+vlitz attach -p 1234          # attach by PID
+vlitz -U attach -N com.example.app   # attach by identifier on USB device
+vlitz attach -f ./target_bin  # spawn and attach
 
-# Attach to a process by name
-vlitz attach -n "target_app"
+vlitz kill -n notepad.exe
 
-# Attach to a process by PID
-vlitz attach -p 1234
-
-# Connect to USB device
-vlitz -U ps
-
-# Connect to remote Frida server
-vlitz -H 192.168.1.100 ps
+vlitz completions zsh > _vlitz   # bash, zsh, fish, powershell, elvish
 ```
 
-### Connection Options
+Inside a session, type `help` or `help <command>` for usage.
 
-- `-D, --device <ID>`: Connect to device with the given ID
-- `-U, --usb`: Connect to USB device
-- `-R, --remote`: Connect to remote frida-server
-- `-H, --host <HOST>`: Connect to remote frida-server on HOST
-
-### Process Selection
-
-- `-p, --pid <PID>`: Target process by Process ID
-- `-n, --name <NAME>`: Target process by name
-- `-f, --file <FILE>`: Target process by spawning executable
-
-### Shell Completion
-
-Generate shell completion scripts:
+Development:
 
 ```bash
-# For Bash
-vlitz --generate-completion bash > vlitz.bash
-source vlitz.bash
-
-# For Zsh
-vlitz --generate-completion zsh > _vlitz
-# Move to your zsh completions directory
-
-# For Fish
-vlitz --generate-completion fish > vlitz.fish
-source vlitz.fish
+cargo build
+cargo test
+cargo fmt --all -- --check
+cargo clippy --all-targets
 ```
 
-## Examples
-
-### Analyze a Running Application
-
-```bash
-# List all running processes
-vlitz ps
-
-# Attach to a specific application
-vlitz attach -n "notepad.exe"
-
-# Kill a process
-vlitz kill -p 1234
-```
-
-### Remote Debugging
-
-```bash
-# Connect to a remote Android device
-vlitz -U ps
-
-# Attach to an Android app
-vlitz -U attach -n "com.example.app"
-```
-
-## Project Structure
+## Project structure
 
 ```
 src/
-├── core/           # Core functionality
-│   ├── actions.rs  # Action handlers
-│   ├── cli.rs      # CLI argument parsing
-│   ├── kill.rs     # Process termination
-│   ├── manager.rs  # Process management
-│   └── ps.rs       # Process listing
-├── gum/            # Frida Gum integration
-│   ├── commander.rs # Command execution
-│   ├── filter.rs   # Process filtering
-│   ├── handler.rs  # Event handling
-│   └── list.rs     # Process enumeration
-├── util/           # Utility functions
-└── main.rs         # Application entry point
+├── main.rs            # entry point
+├── agent.js           # Frida agent injected into the target (embedded at build time)
+├── core/              # CLI parsing, device lookup, ps / kill / devices
+│   ├── cli.rs
+│   ├── actions.rs
+│   ├── manager.rs
+│   ├── process.rs
+│   ├── ps.rs
+│   ├── kill.rs
+│   └── error.rs
+├── gum/               # attach flow and the interactive session
+│   ├── session.rs     # REPL loop
+│   ├── commander.rs   # session state + command dispatch
+│   ├── commands/      # nav, store, memory, hook, disasm, scan command groups
+│   ├── store.rs       # paged Field/Lib stores
+│   ├── vzdata.rs      # typed data items shown in stores
+│   ├── navigator.rs   # address cursor
+│   ├── filter.rs      # filter expression parsing
+│   ├── handler.rs     # agent message handling
+│   ├── list.rs, memory.rs
+│   └── *_tests.rs     # unit tests
+└── util/              # logger and table/format helpers
+.github/workflows/     # ci.yml, release.yml, publish-crates.yml
+plans/                 # design notes
 ```
 
-## Dependencies
+## Configuration
 
-- **clap**: Command-line argument parsing with derive support
-- **frida**: Frida bindings for Rust with auto-download capability
-- **crossterm**: Cross-platform terminal manipulation
-- **rustyline**: Readline implementation for interactive shells
-- **serde/serde_json**: Serialization and JSON handling
-- **regex**: Regular expression support
-- **ctrlc**: Signal handling for graceful shutdown
-
-## Development
-
-### Building
-
-```bash
-# Debug build
-cargo build
-
-# Release build
-cargo build --release
-
-# Run tests
-cargo test
-
-# Check code formatting
-cargo fmt
-
-# Run clippy for linting
-cargo clippy
-```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Vlitz reads no environment variables itself; all options are CLI flags. `frida-sys` uses network access at build time to download the Frida devkit when the `auto-download` feature is enabled.
 
 ## License
 
-`vlitz` is released under the [MIT License](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
-## Acknowledgments
-
-- [Frida](https://frida.re/) - The dynamic instrumentation toolkit that powers this tool
-- The Rust community for excellent crates and documentation
-
-## Support
-
-If you encounter any issues or have questions, please:
-
-1. Check the [Issues](https://github.com/eunhhu/vlitz/issues) page
-2. Create a new issue with detailed information about your problem
-3. Include your operating system, Rust version, and steps to reproduce
-
----
-
-**Note**: This tool is designed for legitimate security research, debugging, and educational purposes. Please use responsibly and in accordance with applicable laws and regulations.
-
+Vlitz is intended for legitimate security research, debugging and education. Use it only on software you are authorized to analyze.
